@@ -68,9 +68,10 @@ body {
     background: radial-gradient(circle at 50% 50%, rgba(120, 170, 255, 0.28), rgba(255, 255, 255, 0.12), transparent 55%);
     opacity: 0;
     transform: scale(0.6);
-    transition: opacity 0.3s ease, transform 0.4s ease;
+    transition: opacity 0.14s ease, transform 0.22s ease;
     filter: blur(0.5px);
     z-index: 0;
+    pointer-events: none;
     animation: ripple-glow 3.5s ease-in-out infinite;
     animation-play-state: paused;
   }
@@ -87,8 +88,9 @@ body {
     border-radius: inherit;
     box-shadow: 0 0 24px rgba(160, 200, 255, 0.18), 0 0 48px rgba(255, 255, 255, 0.12);
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.12s ease;
     z-index: 0;
+    pointer-events: none;
   }
   .glow-ripple:hover::after,
   .glow-ripple:focus-visible::after {

@@ -86,7 +86,7 @@ export default function Sidebar({ activeTab, fileName, onUpload, onClear, loadin
 
       {/* Upload button */}
       <label
-        className="cursor-pointer relative z-10 w-full py-3 font-bold rounded-full flex items-center justify-center space-x-2 transition-all duration-300 glow-ripple"
+        className="cursor-pointer relative z-10 w-full py-3 font-bold rounded-full flex items-center justify-center space-x-2 transition-all duration-300"
         style={{
           background: "#ffffff",
           color: "#000000",
@@ -149,7 +149,7 @@ export default function Sidebar({ activeTab, fileName, onUpload, onClear, loadin
             {documents?.length ? documents.map((doc) => (
               <div 
                 key={doc.id}
-                className="flex items-center justify-between px-4 py-2 rounded-lg transition-all duration-300 group glow-ripple"
+                className="flex items-center justify-between px-4 py-2 rounded-lg transition-all duration-300 group"
                 style={{
                   background: doc.id === currentDocId ? "linear-gradient(120deg, rgba(255,255,255,0.14), rgba(255,255,255,0.08))" : "transparent",
                   border: doc.id === currentDocId ? "1px solid rgba(255,255,255,0.32)" : "1px solid transparent",
@@ -204,7 +204,7 @@ export default function Sidebar({ activeTab, fileName, onUpload, onClear, loadin
                       type="button"
                       onClick={() => onSelectTab(tab.id)}
                       disabled={loading}
-                      className="w-full text-left px-4 py-2.5 rounded-lg transition-all duration-300 flex items-center justify-between glow-ripple"
+                      className="w-full text-left px-4 py-2.5 rounded-lg transition-all duration-300 flex items-center justify-between"
                       ref={isActive ? activeTabRef : undefined}
                       data-tab-id={tab.id}
                       style={{

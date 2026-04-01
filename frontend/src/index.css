@@ -36,26 +36,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-.handoff-section {
-  transition: transform 0.68s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.68s ease;
-  will-change: transform, opacity;
-}
-
-.handoff-in {
-  transform: translateY(0);
-  opacity: 1;
-}
-
-.handoff-out-up {
-  transform: translateY(-12vh);
-  opacity: 0;
-}
-
-.handoff-out-down {
-  transform: translateY(12vh);
-  opacity: 0;
-}
-
 ::selection {
   background: rgba(255,255,255,0.15);
   color: #fff;

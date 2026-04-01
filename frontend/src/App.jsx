@@ -38,7 +38,6 @@ const TAB_GROUPS = [
 export default function App() {
   const [activeTab, setActiveTab] = useState("doc");
   const appShellRef = useRef(null);
-  const [handoff, setHandoff] = useState({ running: false, direction: null });
 
   const handleExplore = () => {
     appShellRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -49,45 +48,6 @@ export default function App() {
     appShellRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "auto" });
-  }, []);
-
-  // Fade/slide handoff between intro and app shell with brief scroll lock
-  useEffect(() => {
-    const triggerHandoff = (direction) => {
-      if (!appShellRef.current) return;
-      setHandoff({ running: true, direction });
-      const targetTop = direction === "down" ? appShellRef.current.offsetTop : 0;
-      window.scrollTo({ top: targetTop, behavior: "smooth" });
-      window.setTimeout(() => setHandoff({ running: false, direction: null }), 750);
-    };
-
-    const onWheel = (e) => {
-      if (!appShellRef.current) return;
-      if (handoff.running) {
-        e.preventDefault();
-        return;
-      }
-
-      const shellTop = appShellRef.current.offsetTop;
-      const y = window.scrollY;
-      const downTrigger = y < shellTop * 0.7;
-      const upZone = y <= shellTop + window.innerHeight * 0.35;
-      const upTrigger = y > shellTop - window.innerHeight * 0.3 && upZone;
-
-      if (e.deltaY > 0 && downTrigger) {
-        e.preventDefault();
-        triggerHandoff("down");
-      } else if (e.deltaY < 0 && upTrigger) {
-        e.preventDefault();
-        triggerHandoff("up");
-      }
-    };
-
-    window.addEventListener("wheel", onWheel, { passive: false });
-    return () => window.removeEventListener("wheel", onWheel);
-  }, [handoff]);
 
   const [messagesDoc, setMessagesDoc] = useState([
     { id: "welcome-doc", sender: "ai", text: "Upload a PDF, then ask any question about it." },
@@ -448,17 +408,15 @@ export default function App() {
   };
 
   const needsChatWindow = ["doc", "general", "role", "summarize", "media"].includes(activeTab);
-
-  const introClass = `handoff-section ${handoff.running && handoff.direction === "down" ? "handoff-out-up" : "handoff-in"}`;
-  const appClass = `handoff-section ${handoff.running && handoff.direction === "up" ? "handoff-out-down" : "handoff-in"}`;
+  const mainScrollClass = needsChatWindow ? "overflow-hidden" : "overflow-y-auto";
 
   return (
     <div>
-      <section className={`h-screen ${introClass}`}>
+      <section className="h-screen">
         <IntroScreen onExplore={handleExplore} />
       </section>
 
-      <section ref={appShellRef} className={`app-shell min-h-screen relative text-sm ${appClass}`} style={{ fontFamily: "'Satoshi', sans-serif", color: "var(--nx-text)", background: "var(--nx-bg)" }}>
+      <section ref={appShellRef} className="app-shell min-h-screen relative text-sm" style={{ fontFamily: "'Satoshi', sans-serif", color: "var(--nx-text)", background: "var(--nx-bg)" }}>
         <Sidebar
           activeTab={activeTab}
           fileName={fileName}
@@ -577,7 +535,7 @@ export default function App() {
           </div>
         </header>
 
-        <main className="ml-[260px] pt-[88px] min-h-screen scroll-smooth relative z-20">
+        <main className={`ml-[260px] pt-[88px] h-[calc(100vh-88px)] ${mainScrollClass} scroll-smooth relative z-20`}>
           {/* Atmosphere orbs */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
             <div className="atmosphere-orb w-[600px] h-[600px] top-[-10%] left-[-10%]" style={{ background: "rgba(255,255,255,0.04)" }} />
@@ -627,126 +585,113 @@ export default function App() {
 
           {needsChatWindow && (
             <div
-              className="max-w-5xl mx-auto flex flex-col justify-end relative z-30 pb-6"
-              style={{ height: "calc(100vh - 140px)" }}
+              className="fixed left-[260px] right-0 px-8 flex flex-col justify-end z-30 min-h-0"
+              style={{ top: "96px", height: "calc(100vh - 120px)", maxHeight: "calc(100vh - 120px)" }}
             >
-              {activeTab === "doc" && (
-                <div className="mb-4 rounded-2xl px-5 py-4 flex gap-3 items-start"
-                  style={{
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    color: "rgba(255,255,255,0.86)",
-                  }}
-                >
-                  <span className="material-symbols-outlined" aria-hidden="true" style={{ color: "#ffffff" }}>description</span>
-                  <div className="text-sm leading-relaxed">
-                    <strong>Document Q&A</strong> lets you upload a PDF or text file and chat with it. Answers stay grounded in the document only—if something isn’t found, it responds: "Not mentioned in the document. No external sources used."
-                  </div>
-                </div>
-              )}
+              <div className="max-w-5xl mx-auto w-full flex flex-col justify-end min-h-0" style={{ height: "100%" }}>
+                <ChatWindow
+                  messages={messagesForTab()}
+                  thinking={thinking}
+                  error={error}
+                  bottomRef={chatBottomRef}
+                />
 
-               <ChatWindow 
-                 messages={messagesForTab()} 
-                 thinking={thinking} 
-                 error={error} 
-                 bottomRef={chatBottomRef} 
-               />
-
-              <div className="w-full px-8 flex justify-center mt-4 fade-in">
-                <div className="w-full rounded-2xl p-4 relative overflow-hidden group"
-                  style={{
-                    background: "rgba(5, 5, 8, 0.85)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    boxShadow: "0 20px 60px rgba(0,0,0,0.45)",
-                  }}
-                >
-                  <div className="absolute top-0 right-0 w-32 h-32 blur-[50px]" style={{ background: "rgba(255,255,255,0.02)" }} />
-                  {activeTab === "doc" && <InputBox onSend={handleSend} disabled={loading || !currentDocId} />}
-                  {activeTab === "general" && <InputBox onSend={handleSendGeneral} disabled={loading} />}
-                  {activeTab === "role" && (
-                    <div className="flex flex-col gap-3">
-                      <div className="flex items-center gap-3 flex-wrap text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>
-                        <span className="font-semibold" style={{ color: "rgba(255,255,255,0.8)" }}>Role</span>
-                        <select
-                          value={rolePersona}
-                          onChange={(e) => setRolePersona(e.target.value)}
-                          className="text-xs rounded-lg px-3 py-2 focus:outline-none"
-                          style={{
-                            background: "rgba(255,255,255,0.04)",
-                            border: "1px solid rgba(255,255,255,0.12)",
-                            color: "#f0f0f0",
-                          }}
-                          disabled={loading}
-                        >
-                          <option value="tutor" style={{ background: "#111" }}>Tutor</option>
-                          <option value="researcher" style={{ background: "#111" }}>Researcher</option>
-                          <option value="summarizer" style={{ background: "#111" }}>Summarizer</option>
-                        </select>
+                <div className="w-full flex justify-center mt-4 fade-in">
+                  <div className="w-full rounded-2xl p-4 relative overflow-hidden group"
+                    style={{
+                      background: "rgba(5, 5, 8, 0.85)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      boxShadow: "0 20px 60px rgba(0,0,0,0.45)",
+                    }}
+                  >
+                    <div className="absolute top-0 right-0 w-32 h-32 blur-[50px]" style={{ background: "rgba(255,255,255,0.02)" }} />
+                    {activeTab === "doc" && <InputBox onSend={handleSend} disabled={loading || !currentDocId} />}
+                    {activeTab === "general" && <InputBox onSend={handleSendGeneral} disabled={loading} />}
+                    {activeTab === "role" && (
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center gap-3 flex-wrap text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>
+                          <span className="font-semibold" style={{ color: "rgba(255,255,255,0.8)" }}>Role</span>
+                          <select
+                            value={rolePersona}
+                            onChange={(e) => setRolePersona(e.target.value)}
+                            className="text-xs rounded-lg px-3 py-2 focus:outline-none"
+                            style={{
+                              background: "rgba(255,255,255,0.04)",
+                              border: "1px solid rgba(255,255,255,0.12)",
+                              color: "#f0f0f0",
+                            }}
+                            disabled={loading}
+                          >
+                            <option value="tutor" style={{ background: "#111" }}>Tutor</option>
+                            <option value="researcher" style={{ background: "#111" }}>Researcher</option>
+                            <option value="summarizer" style={{ background: "#111" }}>Summarizer</option>
+                          </select>
+                        </div>
+                        <InputBox onSend={(text) => handleRoleChat(text, rolePersona)} disabled={loading} />
                       </div>
-                      <InputBox onSend={(text) => handleRoleChat(text, rolePersona)} disabled={loading} />
-                    </div>
-                  )}
-                  {activeTab === "summarize" && (
-                    <div className="flex flex-wrap gap-3 items-center justify-center p-2 relative z-10">
-                      <button
-                        onClick={() => handleSummarize("summary")}
-                        disabled={loading || !currentDocId}
-                        className="nexus-btn-primary"
-                      >
-                        Generate Summary
-                      </button>
-                      <button
-                        onClick={() => handleSummarize("revision")}
-                        disabled={loading || !currentDocId}
-                        className="nexus-btn-ghost"
-                      >
-                        Revision Bullets
-                      </button>
-                    </div>
-                  )}
-                  {activeTab === "media" && (
-                    <div className="grid gap-4 md:grid-cols-2 relative z-10 p-2">
-                      <label className="flex flex-col gap-2 rounded-xl cursor-pointer p-4 items-center justify-center group transition-all duration-300"
-                        style={{
-                          border: "1px dashed rgba(255,255,255,0.15)",
-                          background: "rgba(255,255,255,0.02)",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = "rgba(255,255,255,0.05)";
-                          e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "rgba(255,255,255,0.02)";
-                          e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)";
-                        }}
-                      >
-                        <span className="material-symbols-outlined text-3xl transition-transform group-hover:scale-110" style={{ color: "#ffffff" }}>graphic_eq</span>
-                        <div className="text-sm font-semibold text-white">Upload audio</div>
-                        <div className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>MP3 / WAV / M4A</div>
-                        <input type="file" accept="audio/*" className="hidden" disabled={loading} onChange={(e) => { const file = e.target.files?.[0]; if (file) handleTranscribeAudio(file); e.target.value = ""; }} />
-                      </label>
+                    )}
+                    {activeTab === "summarize" && (
+                      <div className="flex flex-wrap gap-3 items-center justify-center p-2 relative z-10">
+                        <button
+                          onClick={() => handleSummarize("summary")}
+                          disabled={loading || !currentDocId}
+                          className="nexus-btn-primary"
+                        >
+                          Generate Summary
+                        </button>
+                        <button
+                          onClick={() => handleSummarize("revision")}
+                          disabled={loading || !currentDocId}
+                          className="nexus-btn-ghost"
+                        >
+                          Revision Bullets
+                        </button>
+                      </div>
+                    )}
+                    {activeTab === "media" && (
+                      <div className="grid gap-4 md:grid-cols-2 relative z-10 p-2">
+                        <label className="flex flex-col gap-2 rounded-xl cursor-pointer p-4 items-center justify-center group transition-all duration-300"
+                          style={{
+                            border: "1px dashed rgba(255,255,255,0.15)",
+                            background: "rgba(255,255,255,0.02)",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+                            e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "rgba(255,255,255,0.02)";
+                            e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)";
+                          }}
+                        >
+                          <span className="material-symbols-outlined text-3xl transition-transform group-hover:scale-110" style={{ color: "#ffffff" }}>graphic_eq</span>
+                          <div className="text-sm font-semibold text-white">Upload audio</div>
+                          <div className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>MP3 / WAV / M4A</div>
+                          <input type="file" accept="audio/*" className="hidden" disabled={loading} onChange={(e) => { const file = e.target.files?.[0]; if (file) handleTranscribeAudio(file); e.target.value = ""; }} />
+                        </label>
 
-                      <label className="flex flex-col gap-2 rounded-xl cursor-pointer p-4 items-center justify-center group transition-all duration-300"
-                        style={{
-                          border: "1px dashed rgba(255,255,255,0.15)",
-                          background: "rgba(255,255,255,0.02)",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = "rgba(255,255,255,0.05)";
-                          e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "rgba(255,255,255,0.02)";
-                          e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)";
-                        }}
-                      >
-                        <span className="material-symbols-outlined text-3xl transition-transform group-hover:scale-110" style={{ color: "#ffffff" }}>imagesmode</span>
-                        <div className="text-sm font-semibold text-white">Upload image</div>
-                        <div className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>Extract text and summarize</div>
-                        <input type="file" accept="image/png,image/jpeg,image/jpg" className="hidden" disabled={loading} onChange={(e) => { const file = e.target.files?.[0]; if (file) handleImageToText(file); e.target.value = ""; }} />
-                      </label>
-                    </div>
-                  )}
+                        <label className="flex flex-col gap-2 rounded-xl cursor-pointer p-4 items-center justify-center group transition-all duration-300"
+                          style={{
+                            border: "1px dashed rgba(255,255,255,0.15)",
+                            background: "rgba(255,255,255,0.02)",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+                            e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "rgba(255,255,255,0.02)";
+                            e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)";
+                          }}
+                        >
+                          <span className="material-symbols-outlined text-3xl transition-transform group-hover:scale-110" style={{ color: "#ffffff" }}>imagesmode</span>
+                          <div className="text-sm font-semibold text-white">Upload image</div>
+                          <div className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>Extract text and summarize</div>
+                          <input type="file" accept="image/png,image/jpeg,image/jpg" className="hidden" disabled={loading} onChange={(e) => { const file = e.target.files?.[0]; if (file) handleImageToText(file); e.target.value = ""; }} />
+                        </label>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

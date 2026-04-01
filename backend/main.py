@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from rag_pipeline import (
+from backend.rag_pipeline import (
     analyze_text,
     answer_question,
     build_general_prompt,

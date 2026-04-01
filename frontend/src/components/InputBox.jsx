@@ -57,6 +57,7 @@ export default function InputBox({ onSend, disabled }) {
               lineHeight: 1.5,
               minHeight: "72px",
               maxHeight: "200px",
+              boxShadow: "none",
             }}
             onFocus={(e) => {
               e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)";
@@ -73,16 +74,15 @@ export default function InputBox({ onSend, disabled }) {
             disabled={disabled}
             aria-label="Chat input"
           />
-          <div className="flex items-center justify-between text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>
+          <div className="flex items-center justify-between text-[11px] gap-3 flex-wrap" style={{ color: "rgba(255,255,255,0.45)" }}>
             <span>Enter to send · Shift+Enter for newline</span>
-            {disabled && <span>Sending…</span>}
           </div>
         </div>
 
         <button
           type="submit"
           disabled={disabled}
-          className="nexus-btn-primary h-fit"
+          className="nexus-btn-primary h-fit self-start"
           style={{ padding: "12px 20px" }}
         >
           Send

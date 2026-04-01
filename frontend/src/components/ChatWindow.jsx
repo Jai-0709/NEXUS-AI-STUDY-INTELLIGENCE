@@ -11,7 +11,7 @@ export default function ChatWindow({ messages, thinking, error, bottomRef }) {
 
     const handleScroll = () => {
       const distance = el.scrollHeight - el.clientHeight - el.scrollTop;
-      setShowJump(distance > 140);
+      setShowJump(distance > 160);
     };
 
     el.addEventListener("scroll", handleScroll, { passive: true });
@@ -28,33 +28,43 @@ export default function ChatWindow({ messages, thinking, error, bottomRef }) {
   }, [messages, thinking]);
 
   return (
-    <div className="flex-1 relative" aria-live="polite">
+    <div className="flex-1 relative min-h-0" aria-live="polite">
       <div
         ref={listRef}
-        className="overflow-y-auto px-8 py-6 custom-scrollbar h-full"
-        style={{ scrollBehavior: "smooth" }}
+        className="flex flex-col h-full overflow-hidden rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[rgba(10,10,14,0.7)] backdrop-blur-md"
       >
-        <div className="max-w-5xl mx-auto flex flex-col gap-5">
-          {messages.map((msg) => (
-            <MessageBubble key={msg.id} sender={msg.sender} text={msg.text} />
-          ))}
+        <div className="px-6 py-4 text-xs uppercase tracking-[0.25em] border-b border-[rgba(255,255,255,0.06)]"
+          style={{ color: "rgba(255,255,255,0.45)", fontFamily: "'Clash Display', sans-serif" }}
+        >
+          Conversation
+        </div>
 
-          {thinking && <MessageBubble sender="ai" text="Thinking..." muted />}
+        <div
+          className="flex-1 overflow-y-auto px-6 py-5 custom-scrollbar"
+          style={{ scrollBehavior: "smooth" }}
+        >
+          <div className="max-w-5xl mx-auto flex flex-col gap-5">
+            {messages.map((msg) => (
+              <MessageBubble key={msg.id} sender={msg.sender} text={msg.text} />
+            ))}
 
-          {error && (
-            <div className="text-sm rounded-xl px-5 py-4 flex items-center gap-3 fade-in"
-              style={{
-                color: "rgba(255,140,140,0.9)",
-                background: "rgba(255,100,100,0.06)",
-                border: "1px solid rgba(255,100,100,0.12)",
-              }}
-            >
-              <span className="material-symbols-outlined" style={{ color: "rgba(255,100,100,0.7)" }}>error</span>
-              {error}
-            </div>
-          )}
+            {thinking && <MessageBubble sender="ai" text="Thinking..." muted />}
 
-          <div ref={bottomRef} className="h-4" />
+            {error && (
+              <div className="text-sm rounded-xl px-5 py-4 flex items-center gap-3 fade-in"
+                style={{
+                  color: "rgba(255,140,140,0.9)",
+                  background: "rgba(255,100,100,0.06)",
+                  border: "1px solid rgba(255,100,100,0.12)",
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ color: "rgba(255,100,100,0.7)" }}>error</span>
+                {error}
+              </div>
+            )}
+
+            <div ref={bottomRef} className="h-6" />
+          </div>
         </div>
       </div>
 
@@ -62,7 +72,7 @@ export default function ChatWindow({ messages, thinking, error, bottomRef }) {
         <button
           type="button"
           onClick={scrollToBottom}
-          className="fixed bottom-24 right-10 z-40 px-3 py-2 rounded-full text-xs font-semibold shadow-lg transition-all"
+          className="absolute bottom-6 right-6 z-40 px-3 py-2 rounded-full text-xs font-semibold shadow-lg transition-all"
           style={{
             background: "rgba(255,255,255,0.12)",
             border: "1px solid rgba(255,255,255,0.2)",

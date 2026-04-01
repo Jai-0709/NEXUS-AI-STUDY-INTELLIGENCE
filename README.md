@@ -8,9 +8,6 @@ End-to-end Retrieval-Augmented Generation assistant using FastAPI, FAISS, Huggin
 - Role chat (Tutor/Researcher/Summarizer) plus general chat.
 - Flashcards generator (topic or active document context) and quiz generator.
 - Visual mind map (inline SVG).
-- Slide/Image explainer: OCR a slide/image → notes + flashcards + quiz.
-- Collaboration bundle: summary + flashcards + quiz + mind map (optionally uses active document context).
-- Offline QA: returns top cached chunks without calling a model.
 - Media tools: audio transcription (Whisper) and image OCR with optional cleanup/summarization.
 
 ## Prerequisites
@@ -34,7 +31,7 @@ End-to-end Retrieval-Augmented Generation assistant using FastAPI, FAISS, Huggin
 ## Usage
 1. Open the frontend (default http://localhost:5174 — follow the Vite port printed in the terminal if different).
 2. Upload a PDF.
-3. Use the sidebar groups: Chat (Document QA, General AI, AI Roles), Study Tools (Summaries, Flashcards, Quiz, Slide Explainer, Mind Map, Collab Bundle, Offline QA), Media (audio transcription, image OCR + summary).
+3. Use the sidebar groups: Chat (Document QA, General AI, AI Roles), Study Tools (Summaries, Flashcards, Quiz, Mind Map), Media (audio transcription, image OCR + summary).
 4. Document-aware tools ground answers only in retrieved PDF chunks via Nexus AI. Offline QA returns cached chunks only.
 
 ## Notes

@@ -137,7 +137,7 @@ export default function IntroScreen({ onExplore }) {
   }, []);
 
   const handleScrollClick = () => {
-    window.scrollTo({ top: window.innerHeight * 0.8, behavior: "smooth" });
+    window.scrollTo({ top: window.innerHeight, behavior: "smooth" });
     if (onExplore) onExplore();
   };
 
@@ -145,10 +145,9 @@ export default function IntroScreen({ onExplore }) {
     <div
       id="nexus-intro"
       style={{
-        position: "fixed",
-        inset: 0,
+        position: "relative",
         zIndex: 200,
-        background: "var(--nx-bg)", /* Inherit new midnight color */
+        background: "var(--nx-bg)",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -156,6 +155,7 @@ export default function IntroScreen({ onExplore }) {
         overflow: "hidden",
         transition: "transform 0.06s ease-out, opacity 0.06s ease-out",
         willChange: "transform, opacity",
+        minHeight: "100vh",
       }}
     >
       {/* Unicorn Studio Canvas */}

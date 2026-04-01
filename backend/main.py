@@ -15,15 +15,14 @@ from backend.rag_pipeline import (
     answer_question,
     build_general_prompt,
     call_nexus,
-    generate_bundle,
     generate_flashcards,
     generate_mindmap_svg,
     generate_quiz,
-    generate_slide_package,
     image_to_text,
-    load_faiss_store,
-    load_pdf_to_faiss,
+    load_vectorstore,
+    load_pdf_to_vectorstore,
     role_chat,
+    save_vectorstore,
     summarize_context,
     transcribe_audio,
 )
@@ -40,9 +39,17 @@ app.add_middleware(
 BASE_DIR = Path(__file__).parent
 # Load .env from backend directory explicitly.
 load_dotenv(BASE_DIR / ".env")
-UPLOAD_DIR = BASE_DIR / "uploads"
-STORE_DIR = BASE_DIR / "stores"
-METADATA_PATH = BASE_DIR / "documents.json"
+
+# Use /tmp on Render (ephemeral), local paths for development
+IS_RENDER = os.getenv("RENDER", "").lower() in ("true", "1", "yes")
+if IS_RENDER:
+    UPLOAD_DIR = Path("/tmp/nexus_uploads")
+    STORE_DIR = Path("/tmp/nexus_stores")
+    METADATA_PATH = Path("/tmp/nexus_documents.json")
+else:
+    UPLOAD_DIR = BASE_DIR / "uploads"
+    STORE_DIR = BASE_DIR / "stores"
+    METADATA_PATH = BASE_DIR / "documents.json"
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 STORE_DIR.mkdir(parents=True, exist_ok=True)
@@ -118,20 +125,10 @@ class MindMapVisualRequest(BaseModel):
     topic: str
 
 
-class BundleRequest(BaseModel):
-    topic: str
-    use_context: bool = True
-
-
-class OfflineAskRequest(BaseModel):
-    question: str
-    k: int = 3
-
 
 def _persist_vectorstore(doc_id: str, store) -> Path:
     store_path = STORE_DIR / doc_id
-    store_path.mkdir(parents=True, exist_ok=True)
-    store.save_local(str(store_path))
+    save_vectorstore(store, str(store_path))
     return store_path
 
 
@@ -145,6 +142,11 @@ def _set_active(doc: Dict, store) -> None:
     current_doc_id = doc["id"]
     current_filename = doc["file_name"]
     vectorstore_cache[current_doc_id] = store
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
 
 
 @app.get("/documents")
@@ -169,7 +171,7 @@ async def activate_document(doc_id: str):
         return {"message": "Document activated.", "file_name": current_filename, "doc_id": current_doc_id, "cached": True}
 
     try:
-        store = load_faiss_store(str(store_path))
+        store = load_vectorstore(str(store_path))
         _set_active(doc, store)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Failed to load stored index: {exc}") from exc
@@ -189,7 +191,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         contents = await file.read()
         f.write(contents)
 
-    vectorstore = load_pdf_to_faiss(str(file_path))
+    vectorstore = load_pdf_to_vectorstore(str(file_path))
     slug = _slugify(file.filename)
     doc_id = _ensure_unique_id(slug)
     store_path = _persist_vectorstore(doc_id, vectorstore)
@@ -233,20 +235,6 @@ async def ask_question(payload: AskRequest):
         "doc_id": current_doc_id,
         "source_chunks": source_chunks,
     }
-
-
-@app.post("/ask/offline")
-async def ask_offline(payload: OfflineAskRequest):
-    if vectorstore is None:
-        raise HTTPException(status_code=400, detail="No document is active. Upload or activate a document.")
-    if not payload.question.strip():
-        raise HTTPException(status_code=400, detail="Question cannot be empty.")
-
-    k = max(1, min(payload.k, 10))
-    docs = vectorstore.similarity_search(payload.question, k=k)
-    chunks = [doc.page_content for doc in docs]
-
-    return {"chunks": chunks, "file_name": current_filename, "doc_id": current_doc_id}
 
 
 def _top_context(question: str, k: int = 3) -> str:
@@ -319,35 +307,6 @@ async def image_to_text_endpoint(file: UploadFile = File(...), analyze: bool = T
     return {"text": extracted, "analysis": analysis}
 
 
-@app.post("/media/slide-explain")
-async def slide_explain_endpoint(file: UploadFile = File(...)):
-    if file.content_type not in {"image/png", "image/jpeg", "image/jpg"}:
-        raise HTTPException(status_code=400, detail="Only PNG or JPEG images are supported.")
-
-    temp_path = UPLOAD_DIR / f"slide-{file.filename}"
-    with temp_path.open("wb") as f:
-        contents = await file.read()
-        f.write(contents)
-
-    try:
-        ocr_text = image_to_text(str(temp_path))
-        package = generate_slide_package(ocr_text)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Slide analysis failed: {exc}") from exc
-    finally:
-        try:
-            temp_path.unlink()
-        except OSError:
-            pass
-
-    return {
-        "notes": package.get("notes", ""),
-        "flashcards": package.get("flashcards", []),
-        "quiz": package.get("quiz", []),
-        "ocr_text": ocr_text,
-    }
-
-
 @app.post("/chat/general")
 async def general_chat(payload: GeneralRequest):
     if not payload.question.strip():
@@ -399,7 +358,6 @@ async def flashcards(payload: FlashcardRequest):
     if isinstance(cards, list):
         return {"cards": cards, "doc_id": current_doc_id, "file_name": current_filename}
 
-
     return {"raw": str(cards), "doc_id": current_doc_id, "file_name": current_filename}
 
 
@@ -425,31 +383,6 @@ async def quiz(payload: QuizRequest):
     return {"raw": str(questions), "doc_id": current_doc_id, "file_name": current_filename}
 
 
-@app.post("/bundle")
-async def bundle(payload: BundleRequest):
-    if not payload.topic.strip():
-        raise HTTPException(status_code=400, detail="Topic cannot be empty.")
-
-    context = ""
-    if payload.use_context:
-        if vectorstore is None:
-            raise HTTPException(status_code=400, detail="No document is active. Upload or activate a document.")
-        context = _top_context(payload.topic, k=5)
-
-    try:
-        bundle_data = generate_bundle(payload.topic, context=context)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Bundle generation failed: {exc}") from exc
-
-    return {
-        "summary": bundle_data.get("summary", ""),
-        "flashcards": bundle_data.get("flashcards", []),
-        "quiz": bundle_data.get("quiz", []),
-        "mindmap_svg": bundle_data.get("mindmap_svg", ""),
-    }
-
-
-
 
 @app.post("/mind-map/visual")
 async def mind_map_visual(payload: MindMapVisualRequest):
@@ -462,9 +395,6 @@ async def mind_map_visual(payload: MindMapVisualRequest):
         raise HTTPException(status_code=500, detail=f"Mind map generation failed: {exc}") from exc
 
     return {"svg": svg}
-
-
-
 
 @app.delete("/documents/{doc_id}")
 async def delete_document(doc_id: str):

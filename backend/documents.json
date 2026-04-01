@@ -10,5 +10,11 @@
     "file_name": "JAI SURYA M_Doc (1).pdf",
     "pdf_path": "E:\\RAG\\backend\\uploads\\JAI SURYA M_Doc (1).pdf",
     "store_path": "E:\\RAG\\backend\\stores\\jai-surya-m_doc-1"
+  },
+  {
+    "id": "21csc316j--cap-lab-manual",
+    "file_name": "21CSC316J- CAP Lab Manual.pdf",
+    "pdf_path": "E:\\RAG\\backend\\uploads\\21CSC316J- CAP Lab Manual.pdf",
+    "store_path": "E:\\RAG\\backend\\stores\\21csc316j--cap-lab-manual"
   }
 ]

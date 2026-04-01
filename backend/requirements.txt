@@ -3,8 +3,7 @@ uvicorn[standard]
 langchain
 langchain-community
 langchain-text-splitters
-sentence-transformers
-faiss-cpu
+langchain-openai
 pypdf
 python-multipart
 openai
@@ -12,4 +11,4 @@ numpy
 tiktoken
 python-dotenv
 Pillow
-pytesseract
+gunicorn

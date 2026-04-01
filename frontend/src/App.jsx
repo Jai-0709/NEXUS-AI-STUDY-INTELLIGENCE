@@ -6,12 +6,9 @@ import InputBox from "./components/InputBox.jsx";
 import FlashcardsTab from "./components/FlashcardsTab.jsx";
 import QuizTab from "./components/QuizTab.jsx";
 import MindMapVisual from "./components/MindMapVisual.jsx";
-import SlideExplainerTab from "./components/SlideExplainerTab.jsx";
-import BundleTab from "./components/BundleTab.jsx";
-import OfflineTab from "./components/OfflineTab.jsx";
 import IntroScreen from "./components/IntroScreen.jsx";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
 const TAB_GROUPS = [
   {
@@ -28,10 +25,8 @@ const TAB_GROUPS = [
       { id: "summarize", label: "Summaries" },
       { id: "flashcards", label: "Flashcards" },
       { id: "quiz", label: "Quiz" },
-      { id: "slides", label: "Slide Explainer" },
       { id: "mindmap", label: "Mind Map" },
-      { id: "bundle", label: "Collab Bundle" },
-      { id: "offline", label: "Offline QA" },
+      
     ],
   },
   {
@@ -43,6 +38,7 @@ const TAB_GROUPS = [
 export default function App() {
   const [activeTab, setActiveTab] = useState("doc");
   const appShellRef = useRef(null);
+  const [handoff, setHandoff] = useState({ running: false, direction: null });
 
   const handleExplore = () => {
     appShellRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -56,6 +52,42 @@ export default function App() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
   }, []);
+
+  // Fade/slide handoff between intro and app shell with brief scroll lock
+  useEffect(() => {
+    const triggerHandoff = (direction) => {
+      if (!appShellRef.current) return;
+      setHandoff({ running: true, direction });
+      const targetTop = direction === "down" ? appShellRef.current.offsetTop : 0;
+      window.scrollTo({ top: targetTop, behavior: "smooth" });
+      window.setTimeout(() => setHandoff({ running: false, direction: null }), 750);
+    };
+
+    const onWheel = (e) => {
+      if (!appShellRef.current) return;
+      if (handoff.running) {
+        e.preventDefault();
+        return;
+      }
+
+      const shellTop = appShellRef.current.offsetTop;
+      const y = window.scrollY;
+      const downTrigger = y < shellTop * 0.7;
+      const upZone = y <= shellTop + window.innerHeight * 0.35;
+      const upTrigger = y > shellTop - window.innerHeight * 0.3 && upZone;
+
+      if (e.deltaY > 0 && downTrigger) {
+        e.preventDefault();
+        triggerHandoff("down");
+      } else if (e.deltaY < 0 && upTrigger) {
+        e.preventDefault();
+        triggerHandoff("up");
+      }
+    };
+
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, [handoff]);
 
   const [messagesDoc, setMessagesDoc] = useState([
     { id: "welcome-doc", sender: "ai", text: "Upload a PDF, then ask any question about it." },
@@ -78,11 +110,6 @@ export default function App() {
   const [quizRaw, setQuizRaw] = useState("");
   const [quizVersion, setQuizVersion] = useState(0);
   const [mindMapSvg, setMindMapSvg] = useState("");
-  const [slidePackage, setSlidePackage] = useState({ notes: "", flashcards: [], quiz: [], ocr_text: "" });
-  const [bundleData, setBundleData] = useState({ summary: "", flashcards: [], quiz: [], mindmap_svg: "" });
-  const [offlineMessages, setOfflineMessages] = useState([
-    { id: "welcome-offline", sender: "ai", text: "Ask a question; I will return top cached chunks (no model calls)." },
-  ]);
   const [fileName, setFileName] = useState("");
   const [documents, setDocuments] = useState([]);
   const [currentDocId, setCurrentDocId] = useState("");
@@ -179,12 +206,6 @@ export default function App() {
       setQuizRaw("");
     } else if (activeTab === "mindmap") {
       setMindMapSvg("");
-    } else if (activeTab === "slides") {
-      setSlidePackage({ notes: "", flashcards: [], quiz: [], ocr_text: "" });
-    } else if (activeTab === "bundle") {
-      setBundleData({ summary: "", flashcards: [], quiz: [], mindmap_svg: "" });
-    } else if (activeTab === "offline") {
-      setOfflineMessages([{ id: "welcome-offline", sender: "ai", text: "Ask a question; I will return top cached chunks (no model calls)." }]);
     } else if (activeTab === "media") {
       setMessagesMedia([{ id: "welcome-media", sender: "ai", text: "Chat cleared. Upload audio (transcribe) or image (OCR)." }]);
     }
@@ -316,80 +337,6 @@ export default function App() {
     }
   };
 
-  const handleSlideUpload = async (file) => {
-    setError("");
-    if (!file) return;
-    setLoading(true);
-    setThinking(true);
-    setSlidePackage({ notes: "", flashcards: [], quiz: [], ocr_text: "" });
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const res = await axios.post(`${API_BASE}/media/slide-explain`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      setSlidePackage({
-        notes: res.data.notes || "",
-        flashcards: res.data.flashcards || [],
-        quiz: res.data.quiz || [],
-        ocr_text: res.data.ocr_text || "",
-      });
-    } catch (err) {
-      setError(err.response?.data?.detail || "Slide analysis failed.");
-    } finally {
-      setThinking(false);
-      setLoading(false);
-    }
-  };
-
-  const handleBundleGenerate = async (topic, useContext = true) => {
-    setError("");
-    if (!topic.trim()) return;
-    setLoading(true);
-    setThinking(true);
-    setBundleData({ summary: "", flashcards: [], quiz: [], mindmap_svg: "" });
-
-    try {
-      const res = await axios.post(`${API_BASE}/bundle`, { topic, use_context: useContext });
-      setBundleData({
-        summary: res.data.summary || "",
-        flashcards: res.data.flashcards || [],
-        quiz: res.data.quiz || [],
-        mindmap_svg: res.data.mindmap_svg || "",
-      });
-    } catch (err) {
-      setError(err.response?.data?.detail || "Bundle generation failed.");
-    } finally {
-      setThinking(false);
-      setLoading(false);
-    }
-  };
-
-  const handleOfflineSend = async (text) => {
-    setError("");
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    if (!currentDocId) {
-      setError("Please upload or activate a document before asking questions.");
-      return;
-    }
-
-    const userMsg = { id: crypto.randomUUID(), sender: "user", text: trimmed };
-    setOfflineMessages((prev) => [...prev, userMsg]);
-    setThinking(true);
-    try {
-      const res = await axios.post(`${API_BASE}/ask/offline`, { question: trimmed, k: 4 });
-      const aiMsg = { id: crypto.randomUUID(), sender: "ai", text: res.data.chunks || [] };
-      setOfflineMessages((prev) => [...prev, aiMsg]);
-    } catch (err) {
-      setError(err.response?.data?.detail || "Offline lookup failed.");
-    } finally {
-      setThinking(false);
-    }
-  };
-
   const handleTranscribeAudio = async (file) => {
     setError("");
     if (!file) return;
@@ -502,11 +449,16 @@ export default function App() {
 
   const needsChatWindow = ["doc", "general", "role", "summarize", "media"].includes(activeTab);
 
-  return (
-    <>
-      <IntroScreen onExplore={handleExplore} />
+  const introClass = `handoff-section ${handoff.running && handoff.direction === "down" ? "handoff-out-up" : "handoff-in"}`;
+  const appClass = `handoff-section ${handoff.running && handoff.direction === "up" ? "handoff-out-down" : "handoff-in"}`;
 
-      <div ref={appShellRef} className="app-shell min-h-screen relative text-sm" style={{ fontFamily: "'Satoshi', sans-serif", color: "var(--nx-text)", background: "var(--nx-bg)", marginTop: "85vh" }}>
+  return (
+    <div>
+      <section className={`h-screen ${introClass}`}>
+        <IntroScreen onExplore={handleExplore} />
+      </section>
+
+      <section ref={appShellRef} className={`app-shell min-h-screen relative text-sm ${appClass}`} style={{ fontFamily: "'Satoshi', sans-serif", color: "var(--nx-text)", background: "var(--nx-bg)" }}>
         <Sidebar
           activeTab={activeTab}
           fileName={fileName}
@@ -538,7 +490,7 @@ export default function App() {
                   { id: "summarize", label: "Study Tools" },
                   { id: "media", label: "Media" },
                 ].map((item) => {
-                  const studyTabs = ["summarize", "flashcards", "quiz", "mindmap", "slides", "bundle", "offline"];
+                  const studyTabs = ["summarize", "flashcards", "quiz", "mindmap"];
                   const isActive = activeTab === item.id || (item.id === "summarize" && studyTabs.includes(activeTab));
                   return (
                     <button
@@ -625,7 +577,7 @@ export default function App() {
           </div>
         </header>
 
-        <main className="ml-[260px] pt-[88px] h-screen overflow-y-auto scroll-smooth relative z-20">
+        <main className="ml-[260px] pt-[88px] min-h-screen scroll-smooth relative z-20">
           {/* Atmosphere orbs */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
             <div className="atmosphere-orb w-[600px] h-[600px] top-[-10%] left-[-10%]" style={{ background: "rgba(255,255,255,0.04)" }} />
@@ -673,40 +625,32 @@ export default function App() {
             />
           )}
 
-          {activeTab === "slides" && (
-            <SlideExplainerTab
-              data={slidePackage}
-              onUpload={handleSlideUpload}
-              loading={loading}
-              error={error}
-            />
-          )}
-
-          {activeTab === "bundle" && (
-            <BundleTab
-              data={bundleData}
-              onGenerate={handleBundleGenerate}
-              loading={loading}
-              error={error}
-            />
-          )}
-
-          {activeTab === "offline" && (
-            <OfflineTab
-              messages={offlineMessages}
-              onSend={handleOfflineSend}
-              disabled={loading}
-            />
-          )}
-
           {needsChatWindow && (
-            <div className="max-w-5xl mx-auto flex flex-col justify-end min-h-[calc(100vh-140px)] relative z-30 pb-32">
-              <ChatWindow 
-                messages={messagesForTab()} 
-                thinking={thinking} 
-                error={error} 
-                bottomRef={chatBottomRef} 
-              />
+            <div
+              className="max-w-5xl mx-auto flex flex-col justify-end relative z-30 pb-6"
+              style={{ height: "calc(100vh - 140px)" }}
+            >
+              {activeTab === "doc" && (
+                <div className="mb-4 rounded-2xl px-5 py-4 flex gap-3 items-start"
+                  style={{
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    color: "rgba(255,255,255,0.86)",
+                  }}
+                >
+                  <span className="material-symbols-outlined" aria-hidden="true" style={{ color: "#ffffff" }}>description</span>
+                  <div className="text-sm leading-relaxed">
+                    <strong>Document Q&A</strong> lets you upload a PDF or text file and chat with it. Answers stay grounded in the document only—if something isn’t found, it responds: "Not mentioned in the document. No external sources used."
+                  </div>
+                </div>
+              )}
+
+               <ChatWindow 
+                 messages={messagesForTab()} 
+                 thinking={thinking} 
+                 error={error} 
+                 bottomRef={chatBottomRef} 
+               />
 
               <div className="w-full px-8 flex justify-center mt-4 fade-in">
                 <div className="w-full rounded-2xl p-4 relative overflow-hidden group"
@@ -808,7 +752,7 @@ export default function App() {
             </div>
           )}
         </main>
-      </div>
-    </>
+      </section>
+    </div>
   );
 }

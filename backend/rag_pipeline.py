@@ -1,14 +1,17 @@
+import base64
 import json
 import os
+import pickle
 import re
+from pathlib import Path
 from typing import List, Tuple, Union
 
 import openai
 from langchain_core.documents import Document
+from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.embeddings import SentenceTransformerEmbeddings
-from langchain_community.vectorstores import FAISS
 
 _EMBEDDINGS = None
 
@@ -38,16 +41,26 @@ def _extract_json(payload: str) -> Union[dict, list, None]:
     return None
 
 
-def get_embeddings() -> SentenceTransformerEmbeddings:
+def _nexus_base_url() -> str:
+    return "https://apidev.navigatelabsai.com"
+
+
+def _nexus_api_key() -> str:
+    return os.getenv("NEXUS_API_KEY", "")
+
+
+def get_embeddings() -> OpenAIEmbeddings:
     global _EMBEDDINGS
     if _EMBEDDINGS is None:
-        _EMBEDDINGS = SentenceTransformerEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        _EMBEDDINGS = OpenAIEmbeddings(
+            model="text-embedding-3-small",
+            openai_api_key=_nexus_api_key(),
+            openai_api_base=_nexus_base_url(),
         )
     return _EMBEDDINGS
 
 
-def load_pdf_to_faiss(file_path: str) -> FAISS:
+def load_pdf_to_vectorstore(file_path: str) -> InMemoryVectorStore:
     loader = PyPDFLoader(file_path)
     documents = loader.load()
 
@@ -55,13 +68,25 @@ def load_pdf_to_faiss(file_path: str) -> FAISS:
     chunks = splitter.split_documents(documents)
 
     embeddings = get_embeddings()
-    vectorstore = FAISS.from_documents(chunks, embeddings)
+    vectorstore = InMemoryVectorStore.from_documents(chunks, embeddings)
     return vectorstore
 
 
-def load_faiss_store(store_path: str) -> FAISS:
-    embeddings = get_embeddings()
-    return FAISS.load_local(store_path, embeddings, allow_dangerous_deserialization=True)
+def save_vectorstore(store: InMemoryVectorStore, store_path: str) -> None:
+    """Persist an InMemoryVectorStore to disk via pickle."""
+    path = Path(store_path)
+    path.mkdir(parents=True, exist_ok=True)
+    with open(path / "store.pkl", "wb") as f:
+        pickle.dump(store, f)
+
+
+def load_vectorstore(store_path: str) -> InMemoryVectorStore:
+    """Load a previously saved InMemoryVectorStore from disk."""
+    pkl = Path(store_path) / "store.pkl"
+    if not pkl.exists():
+        raise FileNotFoundError(f"No stored vectorstore at {pkl}")
+    with open(pkl, "rb") as f:
+        return pickle.load(f)
 
 
 def build_prompt(context: str, question: str) -> str:
@@ -155,31 +180,10 @@ def build_mindmap_svg_prompt(topic: str) -> str:
     )
 
 
-def build_slide_explainer_prompt(text: str) -> str:
-    return (
-        "You are a slide explainer. Given raw OCR text, produce structured study outputs.\n"
-        "Return JSON ONLY with shape: {\"notes\": str, \"flashcards\": [{front,back}], \"quiz\": [{question,options,answer,explanation}]}.\n"
-        "Notes should be a concise markdown summary (<=8 bullets).\n"
-        "Flashcards: 4-6 cards max; Quiz: 3-5 MCQs.\n\n"
-        f"OCR Text:\n{text}\n"
-    )
-
-
-def build_bundle_prompt(topic: str, context: str = "") -> str:
-    return (
-        "You are creating a collaboration bundle for students.\n"
-        "Return JSON ONLY with shape: {\"summary\": str, \"flashcards\": [{front,back}], \"quiz\": [{question,options,answer,explanation}], \"mindmap_svg\": str}.\n"
-        "Summary: 5-7 tight bullets. Flashcards: 6-8. Quiz: 5 MCQs. mindmap_svg: inline <svg> with width=900 height=600 (no scripts).\n"
-        "Use provided context if available; otherwise general knowledge.\n\n"
-        f"Topic: {topic}\n"
-        f"Context (optional):\n{context}\n"
-    )
-
-
 def call_nexus(prompt: str) -> str:
     client = openai.OpenAI(
-        api_key=os.getenv("NEXUS_API_KEY"),
-        base_url="https://apidev.navigatelabsai.com",
+        api_key=_nexus_api_key(),
+        base_url=_nexus_base_url(),
     )
 
     response = client.chat.completions.create(
@@ -190,7 +194,7 @@ def call_nexus(prompt: str) -> str:
     return response.choices[0].message.content
 
 
-def answer_question(question: str, vectorstore: FAISS) -> Tuple[str, List[str]]:
+def answer_question(question: str, vectorstore: InMemoryVectorStore) -> Tuple[str, List[str]]:
     docs: List[Document] = vectorstore.similarity_search(question, k=3)
     context = "\n\n".join(doc.page_content for doc in docs)
 
@@ -241,35 +245,11 @@ def generate_mindmap_svg(topic: str) -> str:
     return call_nexus(prompt)
 
 
-def generate_slide_package(text: str):
-    prompt = build_slide_explainer_prompt(text)
-    raw = call_nexus(prompt)
-    parsed = _extract_json(raw)
-    if isinstance(parsed, dict) and all(key in parsed for key in ["notes", "flashcards", "quiz"]):
-        return parsed
-    return {"notes": raw, "flashcards": [], "quiz": []}
-
-
-def generate_bundle(topic: str, context: str = ""):
-    prompt = build_bundle_prompt(topic, context)
-    raw = call_nexus(prompt)
-    parsed = _extract_json(raw)
-    if isinstance(parsed, dict):
-        return {
-            "summary": parsed.get("summary", ""),
-            "flashcards": parsed.get("flashcards", []),
-            "quiz": parsed.get("quiz", []),
-            "mindmap_svg": parsed.get("mindmap_svg", ""),
-        }
-    return {"summary": raw, "flashcards": [], "quiz": [], "mindmap_svg": ""}
-
-
 def transcribe_audio(file_path: str) -> str:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is required for transcription.")
-
-    client = openai.OpenAI(api_key=api_key)
+    client = openai.OpenAI(
+        api_key=_nexus_api_key(),
+        base_url=_nexus_base_url(),
+    )
     with open(file_path, "rb") as audio_file:
         response = client.audio.transcriptions.create(
             model="whisper-1",
@@ -280,15 +260,33 @@ def transcribe_audio(file_path: str) -> str:
 
 
 def image_to_text(file_path: str) -> str:
-    try:
-        import pytesseract
-        from PIL import Image
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("Image OCR requires pillow and pytesseract to be installed.") from exc
+    """Use GPT-4o Vision API to extract text from an image (replaces pytesseract)."""
+    with open(file_path, "rb") as img_file:
+        b64 = base64.b64encode(img_file.read()).decode("utf-8")
 
-    with Image.open(file_path) as img:
-        text = pytesseract.image_to_string(img)
-    return text.strip()
+    # Detect mime type from extension
+    ext = Path(file_path).suffix.lower()
+    mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(ext.lstrip("."), "image/png")
+
+    client = openai.OpenAI(
+        api_key=_nexus_api_key(),
+        base_url=_nexus_base_url(),
+    )
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-nano",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Extract all text from this image. Return only the extracted text, preserving the original structure and formatting as much as possible."},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                ],
+            }
+        ],
+    )
+
+    return response.choices[0].message.content.strip()
 
 
 def analyze_text(text: str, task: str = "clean") -> str:

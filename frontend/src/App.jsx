@@ -146,7 +146,21 @@ export default function App() {
 
     try {
       const res = await axios.post(`${API_BASE}/ask`, { question: trimmed });
-      const aiMsg = { id: crypto.randomUUID(), sender: "ai", text: res.data.answer || "I don't know." };
+      const sources = Array.isArray(res.data.source_chunks) ? res.data.source_chunks : [];
+      const citations = sources
+        .slice(0, 3)
+        .map((src, index) => {
+          if (!src || typeof src !== "object") return null;
+          const pageText = src.page ? `p.${src.page}` : `source ${index + 1}`;
+          const excerpt = (src.excerpt || "").trim();
+          return excerpt ? `- [${pageText}] ${excerpt}` : `- [${pageText}]`;
+        })
+        .filter(Boolean)
+        .join("\n");
+
+      const answerText = res.data.answer || "I don't know.";
+      const aiText = citations ? `${answerText}\n\nSources:\n${citations}` : answerText;
+      const aiMsg = { id: crypto.randomUUID(), sender: "ai", text: aiText };
       setMessagesDoc((prev) => [...prev, aiMsg]);
       setCurrentDocId(res.data.doc_id || currentDocId);
       setFileName(res.data.file_name || fileName);

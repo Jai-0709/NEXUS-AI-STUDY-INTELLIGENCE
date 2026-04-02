@@ -2,12 +2,15 @@ import json
 import os
 import re
 import shutil
+import time
+from collections import defaultdict, deque
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from uuid import uuid4
 
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 try:
@@ -78,6 +81,60 @@ vectorstore = None
 vectorstore_cache: Dict[str, object] = {}
 current_doc_id: Optional[str] = None
 current_filename: Optional[str] = None
+
+MAX_PDF_SIZE_BYTES = 15 * 1024 * 1024
+MAX_MEDIA_SIZE_BYTES = 20 * 1024 * 1024
+MAX_TEXT_INPUT_CHARS = 2000
+MAX_TOPIC_CHARS = 160
+_REQUEST_LOGS: Dict[str, deque] = defaultdict(deque)
+
+
+def _client_id(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    if forwarded:
+        return forwarded
+    return request.client.host if request.client else "unknown"
+
+
+def _enforce_rate_limit(request: Request, bucket: str, limit: int, window_seconds: int) -> None:
+    now = time.monotonic()
+    key = f"{_client_id(request)}:{bucket}"
+    records = _REQUEST_LOGS[key]
+    cutoff = now - window_seconds
+
+    while records and records[0] < cutoff:
+        records.popleft()
+
+    if len(records) >= limit:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again shortly.")
+
+    records.append(now)
+
+
+def _validate_text(value: str, field: str, max_chars: int = MAX_TEXT_INPUT_CHARS) -> str:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail=f"{field} cannot be empty.")
+    if len(cleaned) > max_chars:
+        raise HTTPException(status_code=400, detail=f"{field} is too long. Max {max_chars} characters.")
+    return cleaned
+
+
+def _safe_filename(filename: Optional[str], fallback: str) -> str:
+    raw = Path(filename or fallback).name
+    cleaned = re.sub(r"[^a-zA-Z0-9._-]+", "-", raw).strip("-")
+    return cleaned or fallback
+
+
+def _unique_upload_path(directory: Path, file_name: str) -> Path:
+    candidate = directory / file_name
+    stem = Path(file_name).stem
+    suffix = Path(file_name).suffix
+    suffix_idx = 1
+    while candidate.exists():
+        candidate = directory / f"{stem}-{suffix_idx}{suffix}"
+        suffix_idx += 1
+    return candidate
 
 
 def _load_documents_metadata() -> List[Dict]:
@@ -174,7 +231,9 @@ async def list_documents():
 
 
 @app.post("/documents/{doc_id}/activate")
-async def activate_document(doc_id: str):
+async def activate_document(doc_id: str, request: Request):
+    _enforce_rate_limit(request, "activate", limit=40, window_seconds=60)
+
     doc = _find_doc(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
@@ -219,15 +278,25 @@ async def activate_document(doc_id: str):
 
 
 @app.post("/upload")
-async def upload_pdf(file: UploadFile = File(...)):
+async def upload_pdf(request: Request, file: UploadFile = File(...)):
     global vectorstore, current_filename, current_doc_id
 
-    if file.content_type != "application/pdf":
+    _enforce_rate_limit(request, "upload", limit=10, window_seconds=60)
+
+    raw_name = file.filename or "document.pdf"
+    safe_name = _safe_filename(raw_name, "document.pdf")
+
+    if file.content_type != "application/pdf" and not raw_name.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
-    file_path = UPLOAD_DIR / file.filename
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(contents) > MAX_PDF_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="PDF exceeds 15 MB limit.")
+
+    file_path = _unique_upload_path(UPLOAD_DIR, safe_name)
     with file_path.open("wb") as f:
-        contents = await file.read()
         f.write(contents)
 
     try:
@@ -245,11 +314,11 @@ async def upload_pdf(file: UploadFile = File(...)):
             pass
         raise HTTPException(status_code=500, detail=f"Failed to process PDF: {exc}") from exc
 
-    slug = _slugify(file.filename)
+    slug = _slugify(raw_name)
     doc_id = _ensure_unique_id(slug)
     store_path = _persist_vectorstore(doc_id, vectorstore)
 
-    current_filename = file.filename
+    current_filename = raw_name
     current_doc_id = doc_id
 
     doc_record = {
@@ -271,14 +340,16 @@ async def upload_pdf(file: UploadFile = File(...)):
 
 
 @app.post("/ask")
-async def ask_question(payload: AskRequest):
+async def ask_question(payload: AskRequest, request: Request):
+    _enforce_rate_limit(request, "ask", limit=35, window_seconds=60)
+
     if vectorstore is None:
         raise HTTPException(status_code=400, detail="No document is active. Upload or activate a document.")
-    if not payload.question.strip():
-        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+    question = _validate_text(payload.question, "Question")
 
     try:
-        answer, source_chunks = answer_question(payload.question, vectorstore)
+        answer, source_chunks = answer_question(question, vectorstore)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"RAG pipeline failed: {exc}") from exc
 
@@ -296,9 +367,14 @@ def _top_context(question: str, k: int = 3) -> str:
 
 
 @app.post("/summarize")
-async def summarize(payload: SummaryRequest):
+async def summarize(payload: SummaryRequest, request: Request):
+    _enforce_rate_limit(request, "summarize", limit=20, window_seconds=60)
+
     if vectorstore is None:
         raise HTTPException(status_code=400, detail="No document is active. Upload or activate a document.")
+
+    if payload.mode not in {"summary", "revision"}:
+        raise HTTPException(status_code=400, detail="Mode must be one of: summary, revision.")
 
     k = max(1, min(payload.k, 8))
     context = _top_context("summary", k=k)
@@ -314,13 +390,21 @@ async def summarize(payload: SummaryRequest):
 
 
 @app.post("/transcribe-audio")
-async def transcribe_audio_endpoint(file: UploadFile = File(...)):
-    if not file.content_type.startswith("audio/"):
+async def transcribe_audio_endpoint(request: Request, file: UploadFile = File(...)):
+    _enforce_rate_limit(request, "transcribe", limit=8, window_seconds=120)
+
+    if not file.content_type or not file.content_type.startswith("audio/"):
         raise HTTPException(status_code=400, detail="Only audio files are supported.")
 
-    temp_path = UPLOAD_DIR / f"audio-{file.filename}"
+    safe_name = _safe_filename(file.filename, "audio.bin")
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(contents) > MAX_MEDIA_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="Audio file exceeds 20 MB limit.")
+
+    temp_path = UPLOAD_DIR / f"audio-{uuid4().hex}-{safe_name}"
     with temp_path.open("wb") as f:
-        contents = await file.read()
         f.write(contents)
 
     try:
@@ -337,13 +421,21 @@ async def transcribe_audio_endpoint(file: UploadFile = File(...)):
 
 
 @app.post("/image-to-text")
-async def image_to_text_endpoint(file: UploadFile = File(...), analyze: bool = True):
-    if file.content_type not in {"image/png", "image/jpeg", "image/jpg"}:
+async def image_to_text_endpoint(request: Request, file: UploadFile = File(...), analyze: bool = True):
+    _enforce_rate_limit(request, "image_to_text", limit=12, window_seconds=120)
+
+    if not file.content_type or file.content_type not in {"image/png", "image/jpeg", "image/jpg"}:
         raise HTTPException(status_code=400, detail="Only PNG or JPEG images are supported.")
 
-    temp_path = UPLOAD_DIR / f"image-{file.filename}"
+    safe_name = _safe_filename(file.filename, "image.png")
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(contents) > MAX_MEDIA_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="Image file exceeds 20 MB limit.")
+
+    temp_path = UPLOAD_DIR / f"image-{uuid4().hex}-{safe_name}"
     with temp_path.open("wb") as f:
-        contents = await file.read()
         f.write(contents)
 
     try:
@@ -361,12 +453,12 @@ async def image_to_text_endpoint(file: UploadFile = File(...), analyze: bool = T
 
 
 @app.post("/chat/general")
-async def general_chat(payload: GeneralRequest):
-    if not payload.question.strip():
-        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+async def general_chat(payload: GeneralRequest, request: Request):
+    _enforce_rate_limit(request, "general_chat", limit=35, window_seconds=60)
+    question = _validate_text(payload.question, "Question")
 
     try:
-        prompt = build_general_prompt(payload.question)
+        prompt = build_general_prompt(question)
         answer = call_nexus(prompt)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"General chat failed: {exc}") from exc
@@ -375,16 +467,16 @@ async def general_chat(payload: GeneralRequest):
 
 
 @app.post("/chat/role")
-async def role_chat_endpoint(payload: RoleChatRequest):
-    if not payload.question.strip():
-        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+async def role_chat_endpoint(payload: RoleChatRequest, request: Request):
+    _enforce_rate_limit(request, "role_chat", limit=35, window_seconds=60)
+    question = _validate_text(payload.question, "Question")
 
     role = payload.role.lower().strip()
     if role not in {"tutor", "researcher", "summarizer"}:
         raise HTTPException(status_code=400, detail="Role must be one of: tutor, researcher, summarizer.")
 
     try:
-        answer = role_chat(role, payload.question)
+        answer = role_chat(role, question)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Role chat failed: {exc}") from exc
 
@@ -392,9 +484,9 @@ async def role_chat_endpoint(payload: RoleChatRequest):
 
 
 @app.post("/flashcards")
-async def flashcards(payload: FlashcardRequest):
-    if not payload.topic.strip():
-        raise HTTPException(status_code=400, detail="Topic cannot be empty.")
+async def flashcards(payload: FlashcardRequest, request: Request):
+    _enforce_rate_limit(request, "flashcards", limit=20, window_seconds=60)
+    topic = _validate_text(payload.topic, "Topic", max_chars=MAX_TOPIC_CHARS)
 
     count = max(2, min(payload.count, 20))
     context = ""
@@ -404,7 +496,7 @@ async def flashcards(payload: FlashcardRequest):
         context = _top_context("flashcards key concepts", k=min(8, max(3, count)))
 
     try:
-        cards = generate_flashcards(payload.topic, context=context, count=count)
+        cards = generate_flashcards(topic, context=context, count=count)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Flashcard generation failed: {exc}") from exc
 
@@ -415,9 +507,9 @@ async def flashcards(payload: FlashcardRequest):
 
 
 @app.post("/quiz")
-async def quiz(payload: QuizRequest):
-    if not payload.topic.strip():
-        raise HTTPException(status_code=400, detail="Topic cannot be empty.")
+async def quiz(payload: QuizRequest, request: Request):
+    _enforce_rate_limit(request, "quiz", limit=20, window_seconds=60)
+    topic = _validate_text(payload.topic, "Topic", max_chars=MAX_TOPIC_CHARS)
 
     count = max(3, min(payload.count, 15))
     context = ""
@@ -427,7 +519,7 @@ async def quiz(payload: QuizRequest):
         context = _top_context("quiz questions", k=min(8, max(3, count)))
 
     try:
-        questions = generate_quiz(payload.topic, context=context, count=count)
+        questions = generate_quiz(topic, context=context, count=count)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Quiz generation failed: {exc}") from exc
 
@@ -438,20 +530,22 @@ async def quiz(payload: QuizRequest):
 
 
 @app.post("/mind-map/visual")
-async def mind_map_visual(payload: MindMapVisualRequest):
-    if not payload.topic.strip():
-        raise HTTPException(status_code=400, detail="Topic cannot be empty.")
+async def mind_map_visual(payload: MindMapVisualRequest, request: Request):
+    _enforce_rate_limit(request, "mindmap", limit=20, window_seconds=60)
+    topic = _validate_text(payload.topic, "Topic", max_chars=MAX_TOPIC_CHARS)
 
     try:
-        svg = generate_mindmap_svg(payload.topic)
+        svg = generate_mindmap_svg(topic)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Mind map generation failed: {exc}") from exc
 
     return {"svg": svg}
 
 @app.delete("/documents/{doc_id}")
-async def delete_document(doc_id: str):
+async def delete_document(doc_id: str, request: Request):
     global vectorstore, current_doc_id, current_filename
+
+    _enforce_rate_limit(request, "delete_document", limit=20, window_seconds=60)
 
     doc = _find_doc(doc_id)
     if not doc:

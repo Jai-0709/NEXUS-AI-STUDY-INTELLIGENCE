@@ -195,7 +195,7 @@ export default function IntroScreen({ onExplore }) {
         onClick={handleScrollClick}
         style={{
           position: "absolute",
-          bottom: "max(16px, env(safe-area-inset-bottom))",
+          bottom: "max(28px, env(safe-area-inset-bottom))",
           left: "50%",
           transform: "translateX(-50%)",
           zIndex: 10,

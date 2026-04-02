@@ -4,7 +4,7 @@ import os
 import pickle
 import re
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 import openai
 from langchain_core.documents import Document
@@ -236,14 +236,24 @@ def call_nexus(prompt: str) -> str:
     return response.choices[0].message.content
 
 
-def answer_question(question: str, vectorstore) -> Tuple[str, List[str]]:
+def answer_question(question: str, vectorstore) -> Tuple[str, List[Dict[str, Union[int, str, None]]]]:
     docs: List[Document] = vectorstore.similarity_search(question, k=3)
     context = "\n\n".join(doc.page_content for doc in docs)
 
     if context.strip():
         prompt = build_prompt(context, question)
         answer = call_nexus(prompt)
-        source_chunks = [doc.page_content for doc in docs]
+        source_chunks: List[Dict[str, Union[int, str, None]]] = []
+        for doc in docs:
+            raw_page = doc.metadata.get("page") if isinstance(doc.metadata, dict) else None
+            page_num = raw_page + 1 if isinstance(raw_page, int) else None
+            snippet = re.sub(r"\s+", " ", (doc.page_content or "").strip())
+            source_chunks.append(
+                {
+                    "page": page_num,
+                    "excerpt": snippet[:220],
+                }
+            )
         return answer, source_chunks
 
     return "Not mentioned in the document. No external sources used.", []

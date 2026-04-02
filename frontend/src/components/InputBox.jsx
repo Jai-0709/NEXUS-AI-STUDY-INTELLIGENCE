@@ -44,7 +44,7 @@ export default function InputBox({ onSend, disabled }) {
         boxShadow: "0 -12px 40px rgba(0,0,0,0.5)",
       }}
     >
-      <form onSubmit={handleSubmit} className="w-full flex gap-3 items-end px-4 py-3">
+      <form onSubmit={handleSubmit} className="w-full flex flex-col sm:flex-row gap-3 items-stretch sm:items-end px-3 sm:px-4 py-3">
         <div className="flex-1 flex flex-col gap-2">
           <textarea
             ref={textRef}
@@ -82,8 +82,8 @@ export default function InputBox({ onSend, disabled }) {
         <button
           type="submit"
           disabled={disabled}
-          className="nexus-btn-primary h-fit self-start"
-          style={{ padding: "12px 20px" }}
+          className="nexus-btn-primary h-fit w-full sm:w-auto self-stretch sm:self-start"
+          style={{ padding: "12px 20px", minHeight: "48px" }}
         >
           Send
         </button>

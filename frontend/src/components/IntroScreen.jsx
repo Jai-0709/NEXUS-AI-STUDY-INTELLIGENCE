@@ -195,7 +195,7 @@ export default function IntroScreen({ onExplore }) {
         onClick={handleScrollClick}
         style={{
           position: "absolute",
-          bottom: "32px",
+          bottom: "max(16px, env(safe-area-inset-bottom))",
           left: "50%",
           transform: "translateX(-50%)",
           zIndex: 10,
@@ -207,7 +207,7 @@ export default function IntroScreen({ onExplore }) {
           color: "#000000",
           border: "none",
           borderRadius: "12px",
-          width: "260px",
+          width: "min(260px, calc(100% - 32px))",
           height: "44px",
           fontFamily: "'Satoshi', sans-serif",
           fontSize: "14px",

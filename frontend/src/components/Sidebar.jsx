@@ -1,6 +1,21 @@
 import React, { useRef } from 'react';
 
-export default function Sidebar({ activeTab, fileName, onUpload, onClear, loading, documents, currentDocId, onActivate, onRefresh, onDelete, onSelectTab, tabGroups }) {
+export default function Sidebar({
+  activeTab,
+  fileName,
+  onUpload,
+  onClear,
+  loading,
+  documents,
+  currentDocId,
+  onActivate,
+  onRefresh,
+  onDelete,
+  onSelectTab,
+  tabGroups,
+  mobileOpen,
+  onCloseMobile,
+}) {
   const navRef = useRef(null);
   const activeTabRef = useRef(null);
 
@@ -26,7 +41,7 @@ export default function Sidebar({ activeTab, fileName, onUpload, onClear, loadin
 
   return (
     <aside
-      className="h-screen w-[260px] fixed left-0 top-0 z-50 flex flex-col p-6 space-y-8 overflow-hidden"
+      className={`h-screen w-[260px] fixed left-0 top-0 z-50 flex flex-col p-6 space-y-8 overflow-hidden transition-transform duration-300 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
       style={{
         background: "rgba(5, 5, 8, 0.92)",
         backdropFilter: "blur(20px)",
@@ -37,56 +52,72 @@ export default function Sidebar({ activeTab, fileName, onUpload, onClear, loadin
       <div className="absolute inset-0 grainy-bg opacity-[0.02]" />
       
       {/* Logo */}
-      <div className="relative z-10 flex items-center space-x-3" style={{ marginTop: "-6px" }}>
-        <div
-          className="w-13 h-13 rounded-2xl flex items-center justify-center relative"
-          style={{
-            width: "54px",
-            height: "54px",
-            background: "linear-gradient(140deg, rgba(255,255,255,0.16), rgba(255,255,255,0.06))",
-            border: "1px solid rgba(255,255,255,0.36)",
-            boxShadow: "0 14px 32px rgba(255,255,255,0.12)",
-          }}
-        >
+      <div className="relative z-10 flex items-center justify-between" style={{ marginTop: "-6px" }}>
+        <div className="flex items-center space-x-3">
           <div
-            className="absolute inset-[-4px] rounded-2xl"
+            className="w-13 h-13 rounded-2xl flex items-center justify-center relative"
             style={{
-              border: "1px dashed rgba(255,255,255,0.3)",
-              opacity: 0.6,
-              filter: "blur(0.2px)",
+              width: "54px",
+              height: "54px",
+              background: "linear-gradient(140deg, rgba(255,255,255,0.16), rgba(255,255,255,0.06))",
+              border: "1px solid rgba(255,255,255,0.36)",
+              boxShadow: "0 14px 32px rgba(255,255,255,0.12)",
             }}
-          />
-          <span className="material-symbols-outlined" style={{ color: "#ffffff", fontSize: "24px" }}>psychology</span>
-        </div>
-        <div className="leading-tight">
-          <div className="flex items-center gap-2">
-            <h1 className="text-[22px] font-black tracking-tighter uppercase"
-              style={{ fontFamily: "'Clash Display', sans-serif", color: "#ffffff" }}
-            >
-              NEXUS
-            </h1>
-            <span className="text-[9px] px-2 py-0.5 rounded-full"
-              style={{
-                background: "rgba(255,255,255,0.14)",
-                border: "1px solid rgba(255,255,255,0.32)",
-                color: "#ffffff",
-                letterSpacing: "0.14em",
-              }}
-            >
-              CORE
-            </span>
-          </div>
-          <p className="text-[10px] uppercase tracking-[0.32em]"
-            style={{ fontFamily: "'Clash Display', sans-serif", color: "rgba(255,255,255,0.42)" }}
           >
-            AI assistant
-          </p>
+            <div
+              className="absolute inset-[-4px] rounded-2xl"
+              style={{
+                border: "1px dashed rgba(255,255,255,0.3)",
+                opacity: 0.6,
+                filter: "blur(0.2px)",
+              }}
+            />
+            <span className="material-symbols-outlined" style={{ color: "#ffffff", fontSize: "24px" }}>psychology</span>
+          </div>
+          <div className="leading-tight">
+            <div className="flex items-center gap-2">
+              <h1 className="text-[22px] font-black tracking-tighter uppercase"
+                style={{ fontFamily: "'Clash Display', sans-serif", color: "#ffffff" }}
+              >
+                NEXUS
+              </h1>
+              <span className="text-[9px] px-2 py-0.5 rounded-full"
+                style={{
+                  background: "rgba(255,255,255,0.14)",
+                  border: "1px solid rgba(255,255,255,0.32)",
+                  color: "#ffffff",
+                  letterSpacing: "0.14em",
+                }}
+              >
+                CORE
+              </span>
+            </div>
+            <p className="text-[10px] uppercase tracking-[0.32em]"
+              style={{ fontFamily: "'Clash Display', sans-serif", color: "rgba(255,255,255,0.42)" }}
+            >
+              AI assistant
+            </p>
+          </div>
         </div>
+
+        <button
+          type="button"
+          onClick={onCloseMobile}
+          className="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-full"
+          style={{
+            border: "1px solid rgba(255,255,255,0.2)",
+            color: "rgba(255,255,255,0.8)",
+            background: "rgba(255,255,255,0.04)",
+          }}
+          aria-label="Close navigation menu"
+        >
+          <span className="material-symbols-outlined text-[18px]">close</span>
+        </button>
       </div>
 
       {/* Upload button */}
       <label
-        className="cursor-pointer relative z-10 w-full py-3 font-bold rounded-full flex items-center justify-center space-x-2 transition-all duration-300"
+        className="cursor-pointer relative z-10 w-full py-3.5 font-bold rounded-full flex items-center justify-center space-x-2 transition-all duration-300"
         style={{
           background: "#ffffff",
           color: "#000000",
@@ -160,7 +191,7 @@ export default function Sidebar({ activeTab, fileName, onUpload, onClear, loadin
                   type="button"
                   onClick={() => onActivate(doc.id)}
                   disabled={loading}
-                  className="flex items-center space-x-3 flex-1 overflow-hidden"
+                  className="flex items-center space-x-3 flex-1 overflow-hidden py-1"
                 >
                   <span className="material-symbols-outlined text-[16px]">folder_open</span>
                   <span className="text-[15px] truncate text-left">{doc.file_name}</span>
@@ -169,7 +200,7 @@ export default function Sidebar({ activeTab, fileName, onUpload, onClear, loadin
                   type="button"
                   onClick={() => onDelete(doc.id)}
                   disabled={loading}
-                  className="transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50 flex-shrink-0"
+                  className="transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100 disabled:opacity-50 flex-shrink-0"
                   style={{ color: "rgba(255,255,255,0.3)" }}
                   title="Delete Document"
                 >
@@ -204,7 +235,7 @@ export default function Sidebar({ activeTab, fileName, onUpload, onClear, loadin
                       type="button"
                       onClick={() => onSelectTab(tab.id)}
                       disabled={loading}
-                      className="w-full text-left px-4 py-2.5 rounded-lg transition-all duration-300 flex items-center justify-between"
+                      className="w-full text-left px-4 py-3 rounded-lg transition-all duration-300 flex items-center justify-between"
                       ref={isActive ? activeTabRef : undefined}
                       data-tab-id={tab.id}
                       style={{

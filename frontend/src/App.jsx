@@ -35,8 +35,15 @@ const TAB_GROUPS = [
   },
 ];
 
+const MOBILE_QUICK_TABS = [
+  { id: "doc", label: "Chat" },
+  { id: "summarize", label: "Study" },
+  { id: "media", label: "Media" },
+];
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("doc");
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const appShellRef = useRef(null);
 
   const handleExplore = () => {
@@ -45,6 +52,7 @@ export default function App() {
 
   const jumpToTab = (id) => {
     setActiveTab(id);
+    setMobileSidebarOpen(false);
     appShellRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -114,6 +122,7 @@ export default function App() {
       await fetchDocuments();
       setFileName(file.name);
       setMessagesDoc([{ id: "welcome-doc", sender: "ai", text: "File received. Ask me anything about it." }]);
+      setMobileSidebarOpen(false);
     } catch (err) {
       setError(err.response?.data?.detail || "Upload failed.");
     } finally {
@@ -378,6 +387,7 @@ export default function App() {
       setCurrentDocId(res.data.doc_id);
       setFileName(res.data.file_name || "");
       setMessagesDoc([{ id: "welcome-doc", sender: "ai", text: "Switched document. Ask about it." }]);
+      setMobileSidebarOpen(false);
     } catch (err) {
       setError(err.response?.data?.detail || "Could not activate document.");
     } finally {
@@ -409,6 +419,10 @@ export default function App() {
 
   const needsChatWindow = ["doc", "general", "role", "summarize", "media"].includes(activeTab);
   const mainScrollClass = needsChatWindow ? "overflow-hidden" : "overflow-y-auto";
+  const handleSelectTab = (id) => {
+    setActiveTab(id);
+    setMobileSidebarOpen(false);
+  };
 
   return (
     <div>
@@ -428,11 +442,22 @@ export default function App() {
           onActivate={handleActivateDoc}
           onRefresh={handleRefreshDocs}
           onDelete={handleDeleteDoc}
-          onSelectTab={setActiveTab}
+          onSelectTab={handleSelectTab}
           tabGroups={TAB_GROUPS}
+          mobileOpen={mobileSidebarOpen}
+          onCloseMobile={() => setMobileSidebarOpen(false)}
         />
 
-        <header className="fixed top-0 right-0 w-[calc(100%-260px)] z-40 border-b"
+        {mobileSidebarOpen && (
+          <button
+            type="button"
+            className="fixed inset-0 z-40 bg-black/60 md:hidden"
+            onClick={() => setMobileSidebarOpen(false)}
+            aria-label="Close menu overlay"
+          />
+        )}
+
+        <header className="fixed top-0 left-0 md:left-[260px] right-0 z-40 border-b"
           style={{
             background: "rgba(5, 5, 8, 0.88)",
             backdropFilter: "blur(20px)",
@@ -440,8 +465,22 @@ export default function App() {
             boxShadow: "0 12px 48px rgba(255, 255, 255, 0.14)",
           }}
         >
-          <div className="flex justify-between items-center px-10 py-5">
+          <div className="flex justify-between items-center px-4 md:px-10 py-3 md:py-5">
             <div className="flex items-center gap-6">
+              <button
+                type="button"
+                onClick={() => setMobileSidebarOpen((prev) => !prev)}
+                className="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-full"
+                style={{
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  color: "#fff",
+                  background: "rgba(255,255,255,0.06)",
+                }}
+                aria-label="Toggle navigation menu"
+              >
+                <span className="material-symbols-outlined text-[20px]">menu</span>
+              </button>
+
               <div className="hidden md:flex items-center gap-3">
                 {[
                   { id: "doc", label: "Chat" },
@@ -528,14 +567,44 @@ export default function App() {
                 <span className="text-[10px] uppercase tracking-widest"
                   style={{ fontFamily: "'Clash Display', sans-serif", color: "#f8f9ff" }}
                 >
-                  {currentDocId ? "Document Active" : "Waiting for upload"}
+                  {currentDocId ? "Doc Active" : "Upload PDF"}
                 </span>
               </div>
             </div>
           </div>
+
+          <div className="md:hidden px-4 pb-3">
+            <div
+              className="flex items-center gap-2 rounded-xl p-1"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              {MOBILE_QUICK_TABS.map((item) => {
+                const studyTabs = ["summarize", "flashcards", "quiz", "mindmap"];
+                const isActive = activeTab === item.id || (item.id === "summarize" && studyTabs.includes(activeTab));
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => jumpToTab(item.id)}
+                    className="flex-1 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider"
+                    style={{
+                      color: isActive ? "#ffffff" : "rgba(255,255,255,0.62)",
+                      background: isActive ? "rgba(255,255,255,0.12)" : "transparent",
+                      border: isActive ? "1px solid rgba(255,255,255,0.22)" : "1px solid transparent",
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </header>
 
-        <main className={`ml-[260px] pt-[88px] h-[calc(100vh-88px)] ${mainScrollClass} scroll-smooth relative z-20`}>
+        <main className={`md:ml-[260px] pt-[126px] md:pt-[88px] min-h-[calc(100vh-126px)] md:h-[calc(100vh-88px)] ${mainScrollClass} scroll-smooth relative z-20`}>
           {/* Atmosphere orbs */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
             <div className="atmosphere-orb w-[600px] h-[600px] top-[-10%] left-[-10%]" style={{ background: "rgba(255,255,255,0.04)" }} />
@@ -585,8 +654,7 @@ export default function App() {
 
           {needsChatWindow && (
             <div
-              className="fixed left-[260px] right-0 px-8 flex flex-col justify-end z-30 min-h-0"
-              style={{ top: "96px", height: "calc(100vh - 120px)", maxHeight: "calc(100vh - 120px)" }}
+              className="fixed left-0 md:left-[260px] right-0 px-3 md:px-8 flex flex-col justify-end z-30 min-h-0 top-[130px] md:top-[88px] h-[calc(100dvh-146px)] md:h-[calc(100vh-108px)] max-h-[calc(100dvh-146px)] md:max-h-[calc(100vh-108px)]"
             >
               <div className="max-w-5xl mx-auto w-full flex flex-col justify-end min-h-0" style={{ height: "100%" }}>
                 <ChatWindow
@@ -596,12 +664,13 @@ export default function App() {
                   bottomRef={chatBottomRef}
                 />
 
-                <div className="w-full flex justify-center mt-4 fade-in">
+                <div className="w-full flex justify-center mt-3 md:mt-4 fade-in">
                   <div className="w-full rounded-2xl p-4 relative overflow-hidden group"
                     style={{
                       background: "rgba(5, 5, 8, 0.85)",
                       border: "1px solid rgba(255, 255, 255, 0.08)",
                       boxShadow: "0 20px 60px rgba(0,0,0,0.45)",
+                      paddingBottom: "max(12px, env(safe-area-inset-bottom))",
                     }}
                   >
                     <div className="absolute top-0 right-0 w-32 h-32 blur-[50px]" style={{ background: "rgba(255,255,255,0.02)" }} />

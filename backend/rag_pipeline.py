@@ -8,7 +8,7 @@ from typing import List, Tuple, Union
 
 import openai
 from langchain_core.documents import Document
-from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
@@ -60,31 +60,54 @@ def get_embeddings() -> OpenAIEmbeddings:
     return _EMBEDDINGS
 
 
-def load_pdf_to_vectorstore(file_path: str) -> InMemoryVectorStore:
+def load_pdf_to_vectorstore(file_path: str):
     loader = PyPDFLoader(file_path)
     documents = loader.load()
+    if not documents:
+        raise ValueError("The PDF appears to be empty or unreadable.")
 
     splitter = RecursiveCharacterTextSplitter(chunk_size=900, chunk_overlap=80)
     chunks = splitter.split_documents(documents)
+    chunks = [chunk for chunk in chunks if chunk.page_content and chunk.page_content.strip()]
+    if not chunks:
+        raise ValueError(
+            "No extractable text found in the PDF. If this is a scanned document, run OCR first and upload a text-searchable PDF."
+        )
 
     embeddings = get_embeddings()
-    vectorstore = InMemoryVectorStore.from_documents(chunks, embeddings)
+    vectorstore = FAISS.from_documents(chunks, embeddings)
     return vectorstore
 
 
-def save_vectorstore(store: InMemoryVectorStore, store_path: str) -> None:
-    """Persist an InMemoryVectorStore to disk via pickle."""
+def save_vectorstore(store, store_path: str) -> None:
+    """Persist a vectorstore to disk."""
     path = Path(store_path)
     path.mkdir(parents=True, exist_ok=True)
+    if isinstance(store, FAISS):
+        store.save_local(str(path))
+        return
+
+    # Backward fallback for non-FAISS stores.
     with open(path / "store.pkl", "wb") as f:
         pickle.dump(store, f)
 
 
-def load_vectorstore(store_path: str) -> InMemoryVectorStore:
-    """Load a previously saved InMemoryVectorStore from disk."""
-    pkl = Path(store_path) / "store.pkl"
+def load_vectorstore(store_path: str):
+    """Load a previously saved vectorstore from disk."""
+    path = Path(store_path)
+    faiss_index = path / "index.faiss"
+    faiss_store = path / "index.pkl"
+    if faiss_index.exists() and faiss_store.exists():
+        return FAISS.load_local(
+            str(path),
+            get_embeddings(),
+            allow_dangerous_deserialization=True,
+        )
+
+    # Legacy fallback for older in-memory pickled stores.
+    pkl = path / "store.pkl"
     if not pkl.exists():
-        raise FileNotFoundError(f"No stored vectorstore at {pkl}")
+        raise FileNotFoundError(f"No stored vectorstore at {store_path}")
     with open(pkl, "rb") as f:
         return pickle.load(f)
 
@@ -194,7 +217,7 @@ def call_nexus(prompt: str) -> str:
     return response.choices[0].message.content
 
 
-def answer_question(question: str, vectorstore: InMemoryVectorStore) -> Tuple[str, List[str]]:
+def answer_question(question: str, vectorstore) -> Tuple[str, List[str]]:
     docs: List[Document] = vectorstore.similarity_search(question, k=3)
     context = "\n\n".join(doc.page_content for doc in docs)
 

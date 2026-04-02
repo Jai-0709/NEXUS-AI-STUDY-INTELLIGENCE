@@ -191,7 +191,21 @@ async def upload_pdf(file: UploadFile = File(...)):
         contents = await file.read()
         f.write(contents)
 
-    vectorstore = load_pdf_to_vectorstore(str(file_path))
+    try:
+        vectorstore = load_pdf_to_vectorstore(str(file_path))
+    except ValueError as exc:
+        try:
+            file_path.unlink()
+        except OSError:
+            pass
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        try:
+            file_path.unlink()
+        except OSError:
+            pass
+        raise HTTPException(status_code=500, detail=f"Failed to process PDF: {exc}") from exc
+
     slug = _slugify(file.filename)
     doc_id = _ensure_unique_id(slug)
     store_path = _persist_vectorstore(doc_id, vectorstore)

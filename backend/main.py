@@ -193,6 +193,26 @@ async def activate_document(doc_id: str):
         store = load_vectorstore(str(store_path))
         _set_active(doc, store)
     except Exception as exc:  # noqa: BLE001
+        # Runtime may not support the original index format (e.g., faiss unavailable).
+        pdf_path = doc.get("pdf_path")
+        if pdf_path and Path(pdf_path).exists():
+            try:
+                rebuilt = load_pdf_to_vectorstore(str(pdf_path))
+                save_vectorstore(rebuilt, str(store_path))
+                _set_active(doc, rebuilt)
+                return {
+                    "message": "Document activated.",
+                    "file_name": current_filename,
+                    "doc_id": current_doc_id,
+                    "cached": False,
+                    "rebuilt": True,
+                }
+            except Exception as rebuild_exc:  # noqa: BLE001
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to load stored index ({exc}) and failed to rebuild index: {rebuild_exc}",
+                ) from rebuild_exc
+
         raise HTTPException(status_code=500, detail=f"Failed to load stored index: {exc}") from exc
 
     return {"message": "Document activated.", "file_name": current_filename, "doc_id": current_doc_id, "cached": False}

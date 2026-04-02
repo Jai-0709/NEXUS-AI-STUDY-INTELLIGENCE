@@ -8,6 +8,7 @@ from typing import List, Tuple, Union
 
 import openai
 from langchain_core.documents import Document
+from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -75,7 +76,13 @@ def load_pdf_to_vectorstore(file_path: str):
         )
 
     embeddings = get_embeddings()
-    vectorstore = FAISS.from_documents(chunks, embeddings)
+    try:
+        vectorstore = FAISS.from_documents(chunks, embeddings)
+    except Exception as exc:  # noqa: BLE001
+        if "faiss" not in str(exc).lower():
+            raise
+        # Fallback for environments where faiss is unavailable (e.g., unsupported Python builds).
+        vectorstore = InMemoryVectorStore.from_documents(chunks, embeddings)
     return vectorstore
 
 
@@ -85,6 +92,10 @@ def save_vectorstore(store, store_path: str) -> None:
     path.mkdir(parents=True, exist_ok=True)
     if isinstance(store, FAISS):
         store.save_local(str(path))
+        return
+
+    if isinstance(store, InMemoryVectorStore):
+        store.dump(str(path / "store.json"))
         return
 
     # Backward fallback for non-FAISS stores.
@@ -98,11 +109,19 @@ def load_vectorstore(store_path: str):
     faiss_index = path / "index.faiss"
     faiss_store = path / "index.pkl"
     if faiss_index.exists() and faiss_store.exists():
-        return FAISS.load_local(
-            str(path),
-            get_embeddings(),
-            allow_dangerous_deserialization=True,
-        )
+        try:
+            return FAISS.load_local(
+                str(path),
+                get_embeddings(),
+                allow_dangerous_deserialization=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            if "faiss" not in str(exc).lower():
+                raise
+
+    inmem = path / "store.json"
+    if inmem.exists():
+        return InMemoryVectorStore.load(str(inmem), embedding=get_embeddings())
 
     # Legacy fallback for older in-memory pickled stores.
     pkl = path / "store.pkl"

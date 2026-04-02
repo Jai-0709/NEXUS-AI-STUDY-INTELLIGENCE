@@ -10,22 +10,41 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from backend.rag_pipeline import (
-    analyze_text,
-    answer_question,
-    build_general_prompt,
-    call_nexus,
-    generate_flashcards,
-    generate_mindmap_svg,
-    generate_quiz,
-    image_to_text,
-    load_vectorstore,
-    load_pdf_to_vectorstore,
-    role_chat,
-    save_vectorstore,
-    summarize_context,
-    transcribe_audio,
-)
+try:
+    from backend.rag_pipeline import (
+        analyze_text,
+        answer_question,
+        build_general_prompt,
+        call_nexus,
+        generate_flashcards,
+        generate_mindmap_svg,
+        generate_quiz,
+        image_to_text,
+        load_vectorstore,
+        load_pdf_to_vectorstore,
+        role_chat,
+        save_vectorstore,
+        summarize_context,
+        transcribe_audio,
+    )
+except ModuleNotFoundError:
+    # Support runtimes that start from inside `backend` (e.g., `cd backend && gunicorn main:app`).
+    from rag_pipeline import (
+        analyze_text,
+        answer_question,
+        build_general_prompt,
+        call_nexus,
+        generate_flashcards,
+        generate_mindmap_svg,
+        generate_quiz,
+        image_to_text,
+        load_vectorstore,
+        load_pdf_to_vectorstore,
+        role_chat,
+        save_vectorstore,
+        summarize_context,
+        transcribe_audio,
+    )
 
 app = FastAPI(title="RAG Assistant")
 app.add_middleware(

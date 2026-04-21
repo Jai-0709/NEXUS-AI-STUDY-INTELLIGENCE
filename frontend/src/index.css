@@ -23,6 +23,10 @@
   --nx-glow-strong: rgba(255,255,255,0.15);
   --nx-font-display: 'Clash Display', sans-serif;
   --nx-font-body: 'Satoshi', sans-serif;
+  --nx-success: rgba(100,255,150,0.9);
+  --nx-success-bg: rgba(100,255,150,0.08);
+  --nx-error: rgba(255,100,100,0.9);
+  --nx-error-bg: rgba(255,100,100,0.06);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -112,6 +116,34 @@ body {
     var(--nx-bg);
   color: var(--nx-text);
   position: relative;
+}
+
+/* ── App Shell Entrance Transition ── */
+.app-shell-hidden {
+  opacity: 0;
+  transform: translateY(40px) scale(0.98);
+  filter: blur(6px);
+}
+
+.app-shell-visible {
+  animation: appShellEnter 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes appShellEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(40px) scale(0.98);
+    filter: blur(6px);
+  }
+  60% {
+    opacity: 0.9;
+    filter: blur(1px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
+  }
 }
 
 /* Dot-grid texture overlay */
@@ -275,6 +307,166 @@ body {
   animation: fadeInUp 0.4s ease-out forwards;
 }
 
+/* ── Tab content transition ── */
+.tab-content-enter {
+  animation: tabEnter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes tabEnter {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Thinking dots animation ── */
+@keyframes thinkingBounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-6px); opacity: 1; }
+}
+.thinking-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.6);
+  animation: thinkingBounce 1.2s ease-in-out infinite;
+}
+.thinking-dot:nth-child(1) { animation-delay: 0s; }
+.thinking-dot:nth-child(2) { animation-delay: 0.15s; }
+.thinking-dot:nth-child(3) { animation-delay: 0.3s; }
+
+/* ── Flashcard 3D flip ── */
+.flip-card {
+  perspective: 800px;
+  cursor: pointer;
+}
+.flip-card-inner {
+  position: relative;
+  width: 100%;
+  min-height: 180px;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+}
+.flip-card.flipped .flip-card-inner {
+  transform: rotateY(180deg);
+}
+.flip-card-front,
+.flip-card-back {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.flip-card-front {
+  background: linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.flip-card-back {
+  background: linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
+  border: 1px solid rgba(255,255,255,0.2);
+  transform: rotateY(180deg);
+}
+
+/* ── Staggered card entrance ── */
+@keyframes cardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.card-stagger {
+  opacity: 0;
+  animation: cardEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ── Error auto-dismiss slide ── */
+@keyframes errorSlideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes errorSlideOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-8px); }
+}
+.error-toast {
+  animation: errorSlideIn 0.3s ease-out forwards;
+}
+.error-toast-exit {
+  animation: errorSlideOut 0.3s ease-in forwards;
+}
+
+/* ── Quiz option hover glow ── */
+.quiz-option {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.quiz-option:not(:disabled):hover {
+  transform: translateX(4px);
+  border-color: rgba(255,255,255,0.2) !important;
+  background: rgba(255,255,255,0.05) !important;
+}
+.quiz-option:not(:disabled):active {
+  transform: translateX(2px) scale(0.99);
+}
+
+/* ── Score reveal animation ── */
+@keyframes scoreReveal {
+  0% { transform: scale(0.8); opacity: 0; }
+  60% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.score-reveal {
+  animation: scoreReveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ── Skeleton shimmer loading ── */
+@keyframes skeletonSweep {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 0%,
+    rgba(255,255,255,0.10) 40%,
+    rgba(255,255,255,0.04) 80%
+  );
+  background-size: 200% 100%;
+  animation: skeletonSweep 1.6s ease-in-out infinite;
+}
+
+/* ── Global top progress bar ── */
+@keyframes topBarSweep {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(0%); }
+  100% { transform: translateX(100%); }
+}
+.top-progress-bar {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255,255,255,0.5) 40%,
+    rgba(255,255,255,0.8) 60%,
+    transparent 100%
+  );
+  animation: topBarSweep 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+
 /* ── NEXUS Button styles ── */
 .nexus-btn-primary {
   background: #ffffff;
@@ -289,6 +481,19 @@ body {
   letter-spacing: 0.02em;
   box-shadow: 0 0 20px rgba(255,255,255,0.08);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+.nexus-btn-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.5s ease;
+}
+.nexus-btn-primary:hover::after {
+  transform: translateX(100%);
 }
 .nexus-btn-primary:hover {
   transform: scale(1.03);
@@ -300,6 +505,9 @@ body {
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+}
+.nexus-btn-primary:disabled::after {
+  display: none;
 }
 
 .nexus-btn-ghost {
@@ -333,6 +541,35 @@ body {
   border-radius: 99px;
 }
 
+/* ── Input focus glow ring ── */
+.nexus-input {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #f0f0f0;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.nexus-input:focus {
+  border-color: rgba(255,255,255,0.3);
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.04), 0 0 16px rgba(255,255,255,0.06);
+  outline: none;
+}
+.nexus-input::placeholder {
+  color: rgba(255,255,255,0.25);
+}
+
+/* ── Glass card utility ── */
+.glass-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  backdrop-filter: blur(12px);
+  border-radius: 16px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.glass-card:hover {
+  border-color: rgba(255,255,255,0.14);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+
 /* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
   .animated-poster-border,
@@ -341,11 +578,28 @@ body {
   .ascii-line,
   .nexus-pulse,
   .neural-glow,
-  .shimmer-text {
+  .shimmer-text,
+  .app-shell-visible,
+  .card-stagger,
+  .tab-content-enter,
+  .thinking-dot,
+  .skeleton-shimmer,
+  .top-progress-bar {
     animation: none !important;
   }
   .animated-poster-border,
   .atmosphere-orb {
     transform: none !important;
+  }
+  .app-shell-hidden {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+  .flip-card-inner {
+    transition: none !important;
+  }
+  .card-stagger {
+    opacity: 1;
   }
 }

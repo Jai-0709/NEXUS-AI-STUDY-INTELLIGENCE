@@ -21,6 +21,7 @@ try:
         call_nexus,
         generate_flashcards,
         generate_mindmap_svg,
+        generate_poster_html,
         generate_quiz,
         image_to_text,
         load_vectorstore,
@@ -39,6 +40,7 @@ except ModuleNotFoundError:
         call_nexus,
         generate_flashcards,
         generate_mindmap_svg,
+        generate_poster_html,
         generate_quiz,
         image_to_text,
         load_vectorstore,
@@ -200,6 +202,14 @@ class QuizRequest(BaseModel):
 class MindMapVisualRequest(BaseModel):
     topic: str
 
+
+class PosterRequest(BaseModel):
+    topic: str
+    style: str = "modern"
+
+
+class InsightsRequest(BaseModel):
+    k: int = 6
 
 
 def _persist_vectorstore(doc_id: str, store) -> Path:
@@ -540,6 +550,57 @@ async def mind_map_visual(payload: MindMapVisualRequest, request: Request):
         raise HTTPException(status_code=500, detail=f"Mind map generation failed: {exc}") from exc
 
     return {"svg": svg}
+
+
+@app.post("/poster")
+async def generate_poster(payload: PosterRequest, request: Request):
+    _enforce_rate_limit(request, "poster", limit=15, window_seconds=60)
+    topic = _validate_text(payload.topic, "Topic", max_chars=MAX_TOPIC_CHARS)
+
+    style = payload.style.lower().strip()
+    if style not in {"modern", "academic", "creative", "infographic", "neon"}:
+        style = "modern"
+
+    try:
+        html = generate_poster_html(topic, style=style)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Poster generation failed: {exc}") from exc
+
+    return {"html": html, "topic": topic, "style": style}
+
+
+@app.post("/insights")
+async def generate_insights(payload: InsightsRequest, request: Request):
+    _enforce_rate_limit(request, "insights", limit=10, window_seconds=60)
+
+    if vectorstore is None:
+        raise HTTPException(status_code=400, detail="No document is active. Upload or activate a document.")
+
+    k = max(2, min(payload.k, 12))
+    context = _top_context("key concepts themes summary insights", k=k)
+    if not context.strip():
+        return {"answer": "Not enough content found in the document to generate insights."}
+
+    insights_prompt = (
+        "You are NEXUS, an advanced study intelligence engine. Given the following document content, "
+        "generate a comprehensive set of **Study Insights** in a structured format.\n\n"
+        "Include:\n"
+        "1. **Key Themes** (3-5 main topics)\n"
+        "2. **Core Concepts** (bullet list of the most important ideas)\n"
+        "3. **Critical Takeaways** (what a student must remember)\n"
+        "4. **Knowledge Gaps** (what questions remain unanswered or need further study)\n"
+        "5. **Exam Focus Areas** (likely exam or interview topics)\n\n"
+        f"Document Content:\n{context}\n\n"
+        "Format your response in clean markdown with headers and bullet points."
+    )
+
+    try:
+        answer = call_nexus(insights_prompt)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Insights generation failed: {exc}") from exc
+
+    return {"answer": answer, "doc_id": current_doc_id, "file_name": current_filename}
+
 
 @app.delete("/documents/{doc_id}")
 async def delete_document(doc_id: str, request: Request):

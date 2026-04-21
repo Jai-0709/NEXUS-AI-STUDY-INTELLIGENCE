@@ -297,6 +297,60 @@ def generate_mindmap_svg(topic: str) -> str:
     return call_nexus(prompt)
 
 
+def build_poster_prompt(topic: str, style: str = "modern") -> str:
+    style_instructions = {
+        "modern": "Use a dark background (#0a0a0f) with white/light text. Add subtle gradient accents. Clean sans-serif typography. Minimalist and premium feel.",
+        "academic": "Use a white/cream background with dark text. Classic serif headings (Georgia, serif). Structured with clear hierarchy. Professional academic feel.",
+        "creative": "Use a dark gradient background (deep purple to dark blue). Vibrant accent colors (cyan, magenta). Bold display typography. Eye-catching and artistic.",
+        "infographic": "Use a dark slate background. Data-driven layout with numbers, percentages, and stats. Use colored boxes/pills for data points. Clean and informative.",
+        "neon": "Use a pure black background (#000). Neon glowing text effects using text-shadow with cyan/magenta/lime colors. Futuristic cyberpunk aesthetic.",
+    }
+    style_desc = style_instructions.get(style, style_instructions["modern"])
+
+    return (
+        "You are a professional graphic designer. Create a beautiful, self-contained HTML study poster.\n"
+        "Rules:\n"
+        "- Return ONLY the HTML code starting with <div> (no <!DOCTYPE>, <html>, <head>, or <body> tags).\n"
+        "- Use ONLY inline styles. No <style> blocks, no classes, no external CSS.\n"
+        "- The root <div> must have: width:100%; max-width:800px; margin:0 auto; padding, border-radius, and the background.\n"
+        "- Include these sections: a bold title, a subtitle/tagline, 4-6 key concepts with short descriptions, and a takeaway/summary box at the bottom.\n"
+        "- Use proper heading hierarchy with h2, h3 tags — all styled inline.\n"
+        "- Make it visually rich: use gradients, rounded containers, spacing, and visual hierarchy.\n"
+        "- Use Google-safe fonts: 'Segoe UI', system-ui, -apple-system, sans-serif for body; inherit for headings.\n"
+        "- Keep text concise — this is a poster, not an essay. Short punchy phrases.\n"
+        "- Add decorative elements: numbered circles, accent-colored borders, subtle background patterns.\n"
+        "- Must be responsive and look great at any width.\n"
+        f"- Style direction: {style_desc}\n\n"
+        f"Topic: {topic}\n\n"
+        "Return the HTML now:"
+    )
+
+
+def generate_poster_html(topic: str, style: str = "modern") -> str:
+    prompt = build_poster_prompt(topic, style)
+    raw = call_nexus(prompt)
+
+    # Extract HTML from the response (strip markdown fences if present)
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        # Remove opening fence
+        first_newline = cleaned.index("\n") if "\n" in cleaned else len(cleaned)
+        cleaned = cleaned[first_newline + 1:]
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+    cleaned = cleaned.strip()
+
+    # Ensure it starts with a tag
+    if not cleaned.startswith("<"):
+        # Try to find the first HTML tag
+        tag_start = cleaned.find("<div")
+        if tag_start == -1:
+            tag_start = cleaned.find("<")
+        if tag_start > 0:
+            cleaned = cleaned[tag_start:]
+
+    return cleaned
+
 def transcribe_audio(file_path: str) -> str:
     client = openai.OpenAI(
         api_key=_nexus_api_key(),

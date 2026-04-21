@@ -99,26 +99,42 @@ export default function IntroScreen({ onExplore }) {
     const resizeHandler = () => applyCoverScale();
     window.addEventListener("resize", resizeHandler);
 
-    // ─── Scroll-away intro effect ──
-    const FADE_DISTANCE = window.innerHeight * 0.14;
+    // ─── Scroll-away intro effect (smooth parallax crossfade) ──
+    const FADE_DISTANCE = window.innerHeight * 0.45;
+    let introHidden = false;
     const onScroll = () => {
       const introEl = document.getElementById("nexus-intro");
       if (!introEl) return;
       const scrollY = window.scrollY;
       const progress = Math.min(scrollY / FADE_DISTANCE, 1);
+      // Eased progress for a more natural feel
+      const eased = progress < 0.5
+        ? 2 * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 2) / 2;
 
-      if (progress >= 1) {
-        introEl.style.transform = "translateY(-100%)";
+      if (eased >= 0.98) {
+        introEl.style.transform = "translateY(-40px) scale(0.92)";
         introEl.style.opacity = "0";
+        introEl.style.filter = "blur(12px)";
         introEl.style.pointerEvents = "none";
-      } else if (progress <= 0) {
-        introEl.style.transform = "translateY(0)";
+        if (!introHidden) {
+          introHidden = true;
+          window.dispatchEvent(new CustomEvent("nexus-intro-hidden"));
+        }
+      } else if (eased <= 0) {
+        introEl.style.transform = "translateY(0) scale(1)";
         introEl.style.opacity = "1";
+        introEl.style.filter = "blur(0px)";
         introEl.style.pointerEvents = "auto";
+        introHidden = false;
       } else {
-        introEl.style.transform = `translateY(${-progress * 110}px)`;
-        introEl.style.opacity = String(1 - progress);
-        introEl.style.pointerEvents = "none";
+        const yShift = eased * -40;
+        const scale = 1 - eased * 0.08;
+        const blur = eased * 12;
+        introEl.style.transform = `translateY(${yShift}px) scale(${scale})`;
+        introEl.style.opacity = String(1 - eased);
+        introEl.style.filter = `blur(${blur}px)`;
+        introEl.style.pointerEvents = eased > 0.3 ? "none" : "auto";
       }
     };
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -153,8 +169,8 @@ export default function IntroScreen({ onExplore }) {
         alignItems: "center",
         justifyContent: "center",
         overflow: "hidden",
-        transition: "transform 0.06s ease-out, opacity 0.06s ease-out",
-        willChange: "transform, opacity",
+        transition: "transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1), filter 0.35s cubic-bezier(0.4, 0, 0.2, 1)",
+        willChange: "transform, opacity, filter",
         minHeight: "100vh",
       }}
     >

@@ -6,7 +6,9 @@ import InputBox from "./components/InputBox.jsx";
 import FlashcardsTab from "./components/FlashcardsTab.jsx";
 import QuizTab from "./components/QuizTab.jsx";
 import MindMapVisual from "./components/MindMapVisual.jsx";
+import PosterTab from "./components/PosterTab.jsx";
 import IntroScreen from "./components/IntroScreen.jsx";
+import StudyInsightsTab from "./components/StudyInsightsTab.jsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
@@ -26,7 +28,8 @@ const TAB_GROUPS = [
       { id: "flashcards", label: "Flashcards" },
       { id: "quiz", label: "Quiz" },
       { id: "mindmap", label: "Mind Map" },
-      
+      { id: "poster", label: "Poster" },
+      { id: "insights", label: "AI Insights" },
     ],
   },
   {
@@ -44,7 +47,29 @@ const MOBILE_QUICK_TABS = [
 export default function App() {
   const [activeTab, setActiveTab] = useState("doc");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [shellVisible, setShellVisible] = useState(false);
   const appShellRef = useRef(null);
+
+  // Listen for the intro being fully scrolled away
+  useEffect(() => {
+    const onIntroHidden = () => setShellVisible(true);
+    window.addEventListener("nexus-intro-hidden", onIntroHidden);
+
+    // Also check on scroll for when user scrolls back up
+    const onScroll = () => {
+      const scrollY = window.scrollY;
+      const threshold = window.innerHeight * 0.35;
+      if (scrollY >= threshold && !shellVisible) {
+        setShellVisible(true);
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("nexus-intro-hidden", onIntroHidden);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, [shellVisible]);
 
   const handleExplore = () => {
     appShellRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -77,6 +102,10 @@ export default function App() {
   const [quizQuestions, setQuizQuestions] = useState([]);
   const [quizRaw, setQuizRaw] = useState("");
   const [quizVersion, setQuizVersion] = useState(0);
+  const [insightsMessages, setInsightsMessages] = useState([
+    { id: "welcome-insights", sender: "ai", text: "Activate a document, then click Generate Insights to extract key study intelligence." },
+  ]);
+  const [insightsThinking, setInsightsThinking] = useState(false);
   const [mindMapSvg, setMindMapSvg] = useState("");
   const [fileName, setFileName] = useState("");
   const [documents, setDocuments] = useState([]);
@@ -90,6 +119,13 @@ export default function App() {
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messagesDoc, messagesGeneral, messagesRole, messagesSummaries, messagesMedia, activeTab, thinking]);
+
+  // Auto-dismiss errors after 6 seconds
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => setError(""), 6000);
+    return () => clearTimeout(timer);
+  }, [error]);
 
   useEffect(() => {
     fetchDocuments();
@@ -189,6 +225,10 @@ export default function App() {
       setQuizRaw("");
     } else if (activeTab === "mindmap") {
       setMindMapSvg("");
+    } else if (activeTab === "poster") {
+      // PosterTab manages its own state
+    } else if (activeTab === "insights") {
+      setInsightsMessages([{ id: "welcome-insights", sender: "ai", text: "Activate a document, then click Generate Insights." }]);
     } else if (activeTab === "media") {
       setMessagesMedia([{ id: "welcome-media", sender: "ai", text: "Chat cleared. Upload audio (transcribe) or image (OCR)." }]);
     }
@@ -303,6 +343,24 @@ export default function App() {
     }
   };
 
+  const handleInsights = async () => {
+    setError("");
+    if (!currentDocId) {
+      setError("Please upload or activate a document before generating insights.");
+      return;
+    }
+    setInsightsThinking(true);
+    try {
+      const res = await axios.post(`${API_BASE}/insights`, { k: 6 });
+      const aiMsg = { id: crypto.randomUUID(), sender: "ai", text: res.data.answer || "No insights generated." };
+      setInsightsMessages((prev) => [...prev, aiMsg]);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Insights generation failed.");
+    } finally {
+      setInsightsThinking(false);
+    }
+  };
+
   const handleMindMapVisual = async (topic) => {
     setError("");
     setLoading(true);
@@ -317,6 +375,17 @@ export default function App() {
     } finally {
       setThinking(false);
       setLoading(false);
+    }
+  };
+
+  const handlePoster = async (topic, style = "modern") => {
+    setError("");
+    try {
+      const res = await axios.post(`${API_BASE}/poster`, { topic, style });
+      return { html: res.data.html || "" };
+    } catch (err) {
+      setError(err.response?.data?.detail || "Poster generation failed.");
+      return null;
     }
   };
 
@@ -432,6 +501,7 @@ export default function App() {
   };
 
   const needsChatWindow = ["doc", "general", "role", "summarize", "media"].includes(activeTab);
+  const isInsightsTab = activeTab === "insights";
   const mainScrollClass = needsChatWindow ? "overflow-hidden" : "overflow-y-auto";
   const handleSelectTab = (id) => {
     setActiveTab(id);
@@ -444,7 +514,11 @@ export default function App() {
         <IntroScreen onExplore={handleExplore} />
       </section>
 
-      <section ref={appShellRef} className="app-shell min-h-screen relative text-sm" style={{ fontFamily: "'Satoshi', sans-serif", color: "var(--nx-text)", background: "var(--nx-bg)" }}>
+      <section
+        ref={appShellRef}
+        className={`app-shell min-h-screen relative text-sm ${shellVisible ? 'app-shell-visible' : 'app-shell-hidden'}`}
+        style={{ fontFamily: "'Satoshi', sans-serif", color: "var(--nx-text)", background: "var(--nx-bg)" }}
+      >
         <Sidebar
           activeTab={activeTab}
           fileName={fileName}
@@ -479,6 +553,13 @@ export default function App() {
             boxShadow: "0 12px 48px rgba(255, 255, 255, 0.14)",
           }}
         >
+          {/* Global top progress bar */}
+          {(loading || insightsThinking) && (
+            <div className="absolute top-0 left-0 right-0 h-[2px] overflow-hidden z-50">
+              <div className="top-progress-bar" />
+            </div>
+          )}
+
           <div className="flex justify-between items-center px-4 md:px-10 py-3 md:py-5">
             <div className="flex items-center gap-6">
               <button
@@ -501,7 +582,7 @@ export default function App() {
                   { id: "summarize", label: "Study Tools" },
                   { id: "media", label: "Media" },
                 ].map((item) => {
-                  const studyTabs = ["summarize", "flashcards", "quiz", "mindmap"];
+                  const studyTabs = ["summarize", "flashcards", "quiz", "mindmap", "poster"];
                   const isActive = activeTab === item.id || (item.id === "summarize" && studyTabs.includes(activeTab));
                   return (
                     <button
@@ -596,7 +677,7 @@ export default function App() {
               }}
             >
               {MOBILE_QUICK_TABS.map((item) => {
-                const studyTabs = ["summarize", "flashcards", "quiz", "mindmap"];
+                const studyTabs = ["summarize", "flashcards", "quiz", "mindmap", "poster"];
                 const isActive = activeTab === item.id || (item.id === "summarize" && studyTabs.includes(activeTab));
                 return (
                   <button
@@ -628,11 +709,18 @@ export default function App() {
 
           {!needsChatWindow && error && (
             <div className="max-w-4xl mx-auto mt-4 px-6">
-              <div className="text-sm rounded-xl px-5 py-4 flex items-center gap-3 fade-in"
+              <div className="text-sm rounded-xl px-5 py-4 flex items-center gap-3 error-toast"
                 style={{ color: "#ff8888", background: "rgba(255,100,100,0.08)", border: "1px solid rgba(255,100,100,0.15)" }}
               >
                 <span className="material-symbols-outlined" style={{ color: "#ff6666" }}>error</span>
-                {error}
+                <span className="flex-1">{error}</span>
+                <button type="button" onClick={() => setError("")} className="flex-shrink-0 transition-colors"
+                  style={{ color: "rgba(255,100,100,0.5)" }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = "#ff6666"}
+                  onMouseLeave={(e) => e.currentTarget.style.color = "rgba(255,100,100,0.5)"}
+                >
+                  <span className="material-symbols-outlined text-[16px]">close</span>
+                </button>
               </div>
             </div>
           )}
@@ -666,9 +754,27 @@ export default function App() {
             />
           )}
 
+          {activeTab === "poster" && (
+            <PosterTab
+              onGenerate={handlePoster}
+              disabled={loading}
+            />
+          )}
+
+          {isInsightsTab && (
+            <StudyInsightsTab
+              messages={insightsMessages}
+              onGenerate={handleInsights}
+              disabled={loading}
+              thinking={insightsThinking}
+              currentDocId={currentDocId}
+            />
+          )}
+
           {needsChatWindow && (
             <div
-              className="fixed left-0 md:left-[260px] right-0 px-3 md:px-8 flex flex-col justify-end z-30 min-h-0 top-[130px] md:top-[88px] h-[calc(100dvh-146px)] md:h-[calc(100vh-108px)] max-h-[calc(100dvh-146px)] md:max-h-[calc(100vh-108px)]"
+              key={activeTab}
+              className="fixed left-0 md:left-[260px] right-0 px-3 md:px-8 flex flex-col justify-end z-30 min-h-0 top-[130px] md:top-[88px] h-[calc(100dvh-146px)] md:h-[calc(100vh-108px)] max-h-[calc(100dvh-146px)] md:max-h-[calc(100vh-108px)] tab-content-enter"
             >
               <div className="max-w-5xl mx-auto w-full flex flex-col justify-end min-h-0" style={{ height: "100%" }}>
                 <ChatWindow
@@ -692,23 +798,27 @@ export default function App() {
                     {activeTab === "general" && <InputBox onSend={handleSendGeneral} disabled={loading} />}
                     {activeTab === "role" && (
                       <div className="flex flex-col gap-3">
-                        <div className="flex items-center gap-3 flex-wrap text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>
-                          <span className="font-semibold" style={{ color: "rgba(255,255,255,0.8)" }}>Role</span>
-                          <select
-                            value={rolePersona}
-                            onChange={(e) => setRolePersona(e.target.value)}
-                            className="text-xs rounded-lg px-3 py-2 focus:outline-none"
-                            style={{
-                              background: "rgba(255,255,255,0.04)",
-                              border: "1px solid rgba(255,255,255,0.12)",
-                              color: "#f0f0f0",
-                            }}
-                            disabled={loading}
-                          >
-                            <option value="tutor" style={{ background: "#111" }}>Tutor</option>
-                            <option value="researcher" style={{ background: "#111" }}>Researcher</option>
-                            <option value="summarizer" style={{ background: "#111" }}>Summarizer</option>
-                          </select>
+                        <div className="flex items-center gap-3 flex-wrap text-xs">
+                          <span className="font-semibold text-xs uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.5)", fontFamily: "'Clash Display', sans-serif" }}>Role</span>
+                          <div className="flex gap-2">
+                            {["tutor", "researcher", "summarizer"].map((r) => (
+                              <button
+                                key={r}
+                                type="button"
+                                onClick={() => setRolePersona(r)}
+                                disabled={loading}
+                                className="px-3.5 py-1.5 rounded-full text-xs font-medium capitalize transition-all duration-200"
+                                style={{
+                                  background: rolePersona === r ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.03)",
+                                  border: rolePersona === r ? "1px solid rgba(255,255,255,0.3)" : "1px solid rgba(255,255,255,0.08)",
+                                  color: rolePersona === r ? "#ffffff" : "rgba(255,255,255,0.5)",
+                                  boxShadow: rolePersona === r ? "0 4px 16px rgba(255,255,255,0.08)" : "none",
+                                }}
+                              >
+                                {r}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                         <InputBox onSend={(text) => handleRoleChat(text, rolePersona)} disabled={loading} />
                       </div>

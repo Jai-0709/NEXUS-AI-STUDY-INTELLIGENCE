@@ -170,7 +170,7 @@ export default function App() {
     setError("");
     const trimmed = text.trim();
     if (!trimmed) return;
-    if (!currentDocId) {
+    if (!currentDocId && documents.length === 0) {
       setError("Please upload or activate a document before asking questions.");
       return;
     }
@@ -265,7 +265,7 @@ export default function App() {
 
   const handleSummarize = async (mode = "summary") => {
     setError("");
-    if (!currentDocId) {
+    if (!currentDocId && documents.length === 0) {
       setError("Please upload or activate a document before running tools.");
       return;
     }
@@ -332,7 +332,7 @@ export default function App() {
 
   const handleInsights = async () => {
     setError("");
-    if (!currentDocId) {
+    if (!currentDocId && documents.length === 0) {
       setError("Please upload or activate a document before generating insights.");
       return;
     }

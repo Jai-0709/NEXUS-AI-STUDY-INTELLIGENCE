@@ -230,6 +230,73 @@ def _set_active(doc: Dict, store) -> None:
     vectorstore_cache[current_doc_id] = store
 
 
+def _resolve_active_doc_id() -> Optional[str]:
+    if current_doc_id and _find_doc(current_doc_id):
+        return current_doc_id
+    if documents:
+        return documents[-1].get("id")
+    return None
+
+
+def _try_activate_doc_record(doc: Dict) -> bool:
+    doc_id = doc.get("id")
+    if not doc_id:
+        return False
+
+    cached = vectorstore_cache.get(doc_id)
+    if cached is not None:
+        _set_active(doc, cached)
+        return True
+
+    store_path = doc.get("store_path")
+    if store_path and Path(store_path).exists():
+        try:
+            store = load_vectorstore(str(store_path))
+            _set_active(doc, store)
+            return True
+        except Exception:  # noqa: BLE001
+            # Fall through to PDF rebuild fallback.
+            pass
+
+    pdf_path = doc.get("pdf_path")
+    if pdf_path and Path(pdf_path).exists():
+        try:
+            rebuilt = load_pdf_to_vectorstore(str(pdf_path))
+            store_dir = STORE_DIR / doc_id
+            save_vectorstore(rebuilt, str(store_dir))
+            doc["store_path"] = str(store_dir)
+            _save_documents_metadata(documents)
+            _set_active(doc, rebuilt)
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
+    return False
+
+
+def _ensure_active_vectorstore() -> bool:
+    if vectorstore is not None and current_doc_id:
+        return True
+
+    preferred_id = _resolve_active_doc_id()
+    candidates: List[Dict] = []
+
+    if preferred_id:
+        preferred_doc = _find_doc(preferred_id)
+        if preferred_doc:
+            candidates.append(preferred_doc)
+
+    for doc in reversed(documents):
+        if all(existing.get("id") != doc.get("id") for existing in candidates):
+            candidates.append(doc)
+
+    for doc in candidates:
+        if _try_activate_doc_record(doc):
+            return True
+
+    return False
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
@@ -237,7 +304,7 @@ async def health_check():
 
 @app.get("/documents")
 async def list_documents():
-    return {"documents": documents, "active_id": current_doc_id}
+    return {"documents": documents, "active_id": _resolve_active_doc_id()}
 
 
 @app.post("/documents/{doc_id}/activate")
@@ -353,7 +420,7 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
 async def ask_question(payload: AskRequest, request: Request):
     _enforce_rate_limit(request, "ask", limit=35, window_seconds=60)
 
-    if vectorstore is None:
+    if not _ensure_active_vectorstore():
         raise HTTPException(status_code=400, detail="No document is active. Upload or activate a document.")
 
     question = _validate_text(payload.question, "Question")
@@ -380,7 +447,7 @@ def _top_context(question: str, k: int = 3) -> str:
 async def summarize(payload: SummaryRequest, request: Request):
     _enforce_rate_limit(request, "summarize", limit=20, window_seconds=60)
 
-    if vectorstore is None:
+    if not _ensure_active_vectorstore():
         raise HTTPException(status_code=400, detail="No document is active. Upload or activate a document.")
 
     if payload.mode not in {"summary", "revision"}:
@@ -501,7 +568,7 @@ async def flashcards(payload: FlashcardRequest, request: Request):
     count = max(2, min(payload.count, 20))
     context = ""
     if payload.use_context:
-        if vectorstore is None:
+        if not _ensure_active_vectorstore():
             raise HTTPException(status_code=400, detail="No document is active. Upload or activate a document.")
         context = _top_context("flashcards key concepts", k=min(8, max(3, count)))
 
@@ -524,7 +591,7 @@ async def quiz(payload: QuizRequest, request: Request):
     count = max(3, min(payload.count, 15))
     context = ""
     if payload.use_context:
-        if vectorstore is None:
+        if not _ensure_active_vectorstore():
             raise HTTPException(status_code=400, detail="No document is active. Upload or activate a document.")
         context = _top_context("quiz questions", k=min(8, max(3, count)))
 
@@ -573,7 +640,7 @@ async def generate_poster(payload: PosterRequest, request: Request):
 async def generate_insights(payload: InsightsRequest, request: Request):
     _enforce_rate_limit(request, "insights", limit=10, window_seconds=60)
 
-    if vectorstore is None:
+    if not _ensure_active_vectorstore():
         raise HTTPException(status_code=400, detail="No document is active. Upload or activate a document.")
 
     k = max(2, min(payload.k, 12))

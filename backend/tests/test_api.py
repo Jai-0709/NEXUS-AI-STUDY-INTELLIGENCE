@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+import backend.main as main_module
 from backend.main import app
 
 
@@ -13,6 +14,10 @@ def test_health_ok():
 
 
 def test_ask_requires_active_document():
+    main_module.vectorstore = None
+    main_module.current_doc_id = None
+    main_module.current_filename = None
+    main_module.documents.clear()
     response = client.post("/ask", json={"question": "What is this document about?"})
     assert response.status_code == 400
     assert "No document is active" in response.json()["detail"]
